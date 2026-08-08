@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Мультиплеер (Бесплатно, без серверов)</title>
+    <title>3D Мультиплеер (Мир онлайн)</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
         #menu {
@@ -54,45 +54,23 @@
             display: none;
             text-align: center;
         }
-        #roomCode {
+        #status {
             position: absolute;
             top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 15;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            padding: 15px 30px;
-            border-radius: 10px;
-            font-size: 1.5rem;
+            right: 20px;
+            color: #00ff00;
+            font-size: 1.2rem;
+            text-shadow: 0 0 10px black;
+            z-index: 5;
             display: none;
-            text-align: center;
-            pointer-events: auto;
-        }
-        #roomCode input {
-            padding: 10px;
-            font-size: 1.2rem;
-            border-radius: 5px;
-            border: none;
-            width: 200px;
-            text-align: center;
-        }
-        #roomCode button {
+            background: rgba(0,0,0,0.5);
             padding: 10px 20px;
-            font-size: 1.2rem;
-            background: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            margin-top: 10px;
+            border-radius: 10px;
         }
     </style>
 </head>
 <body>
-    <div id="menu">
-        <button id="startBtn">ВОЙТИ В ИГРУ</button>
-    </div>
+    <div id="menu"><button id="startBtn">ВОЙТИ В ИГРУ (Онлайн)</button></div>
     <div id="ui">
         <div>WASD — ходьба | Пробел — прыжок | B — танец</div>
         <div>Клик по экрану — захват мыши</div>
@@ -101,11 +79,7 @@
         <div id="loadingText">Загрузка: 0%</div>
         <div class="sub">Загружаем модель и анимации...</div>
     </div>
-    <div id="roomCode">
-        <div>Код комнаты: <span id="codeDisplay">---</span></div>
-        <input id="codeInput" placeholder="Введите код" />
-        <button id="joinBtn">ПОДКЛЮЧИТЬСЯ</button>
-    </div>
+    <div id="status">⏳ Подключение к серверу...</div>
 
     <script type="importmap">
         {
@@ -116,24 +90,14 @@
         }
     </script>
 
-    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
-
     <script type="module">
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
-        console.log('⏳ Ожидание PeerJS...');
-        await new Promise((resolve) => {
-            const check = () => {
-                if (window.Peer) {
-                    console.log('✅ PeerJS загружен!');
-                    resolve();
-                } else {
-                    setTimeout(check, 100);
-                }
-            };
-            check();
-        });
+        // =============================================================
+        // ВАШ URL СЕРВЕРА (Cloudflare Worker)
+        // =============================================================
+        const SERVER_URL = 'wss://divine-heart-7248.tvink00tv.workers.dev';
 
         // =============================================================
         // СЦЕНА
@@ -197,7 +161,6 @@
         let mixer = null;
         let currentAction = null;
         let lastTime = performance.now() / 1000;
-        
         const actions = {};
         let modelsLoaded = false;
         const loadingDiv = document.getElementById('loading');
@@ -251,8 +214,8 @@
                 mainModel = modelFbx;
                 
                 const idleAnim = modelFbx.animations[0];
-                const walkAnim = walkFbx.animations[0];
-                const danceAnim = danceFbx.animations[0];
+                const walkAnim = walkFbx?.animations[0];
+                const danceAnim = danceFbx?.animations[0];
                 
                 if (idleAnim && walkAnim && danceAnim) {
                     mainModel.animations.push(walkAnim);
@@ -343,13 +306,11 @@
         });
         
         // =============================================================
-        // PEERJS МУЛЬТИПЛЕЕР (БЕСПЛАТНО, БЕЗ СЕРВЕРА)
+        // ПОДКЛЮЧЕНИЕ К ЕДИНОМУ СЕРВЕРУ
         // =============================================================
-        let peer = null;
-        let connection = null;
+        let ws = null;
         let otherPlayers = {};
-        let myPeerId = '';
-        let isHost = false;
+        let myId = Math.random().toString(36).substring(2, 10);
 
         function createOtherPlayer() {
             if (!mainModel) return null;
@@ -359,110 +320,92 @@
         }
 
         function sendMyState() {
-            if (connection && connection.open) {
-                connection.send({
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'update',
+                    id: myId,
                     x: playerGroup.position.x,
                     y: playerGroup.position.y,
                     z: playerGroup.position.z,
-                    rotY: playerGroup.rotation.y,
-                    anim: isDancingMode ? 'dance' : (isWalking ? 'walk' : 'idle')
-                });
+                    rotY: playerGroup.rotation.y
+                }));
             }
         }
 
-        function initPeer() {
-            // Российские STUN-серверы для быстрой связи
-            const config = {
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun.yandex.ru:19302' },
-                    { urls: 'stun:stun.miwifi.com:3478' }
-                ]
+        function initServer() {
+            document.getElementById('status').style.display = 'block';
+            
+            ws = new WebSocket(SERVER_URL);
+            
+            ws.onopen = () => {
+                console.log('✅ Подключено к серверу!');
+                document.getElementById('status').textContent = '✅ Онлайн';
+                document.getElementById('status').style.color = '#00ff00';
+                document.getElementById('menu').style.display = 'none';
+                document.getElementById('ui').style.display = 'block';
+                isPlaying = true;
+                
+                // Отправляем свою позицию
+                sendMyState();
+                
+                // Отправляем позицию каждые 100мс
+                setInterval(sendMyState, 100);
             };
             
-            peer = new window.Peer(null, { config: config, debug: 2 });
-
-            peer.on('open', (id) => {
-                myPeerId = id;
-                console.log('✅ Peer ID:', id);
-                document.getElementById('codeDisplay').textContent = id;
-                document.getElementById('roomCode').style.display = 'block';
-                document.getElementById('menu').style.display = 'none';
-                isPlaying = true;
-                isHost = true;
-            });
-
-            peer.on('connection', (conn) => {
-                console.log('👥 Подключился игрок!');
-                connection = conn;
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
                 
-                connection.on('data', (data) => {
-                    if (!otherPlayers[conn.peer]) {
-                        const clone = createOtherPlayer();
-                        if (clone) {
-                            scene.add(clone);
-                            otherPlayers[conn.peer] = clone;
+                if (data.type === 'players') {
+                    const players = data.data;
+                    
+                    // Удаляем тех, кого нет в списке
+                    for (const key in otherPlayers) {
+                        if (!players.find(p => p.id === key)) {
+                            scene.remove(otherPlayers[key]);
+                            delete otherPlayers[key];
                         }
                     }
-                    if (otherPlayers[conn.peer]) {
-                        otherPlayers[conn.peer].position.set(data.x, data.y, data.z);
-                        otherPlayers[conn.peer].rotation.y = data.rotY;
-                    }
-                });
-
-                connection.on('close', () => {
-                    if (otherPlayers[conn.peer]) {
-                        scene.remove(otherPlayers[conn.peer]);
-                        delete otherPlayers[conn.peer];
-                    }
-                });
-
-                sendMyState();
-            });
-        }
-
-        function connectToPeer(peerId) {
-            const conn = peer.connect(peerId, { reliable: true });
-
-            conn.on('open', () => {
-                console.log('✅ Подключен к хосту!');
-                connection = conn;
-                document.getElementById('roomCode').style.display = 'none';
-                isHost = false;
-                
-                conn.on('data', (data) => {
-                    if (!otherPlayers[conn.peer]) {
-                        const clone = createOtherPlayer();
-                        if (clone) {
-                            scene.add(clone);
-                            otherPlayers[conn.peer] = clone;
+                    
+                    // Добавляем/обновляем тех, кто есть
+                    for (const player of players) {
+                        if (player.id === myId) continue;
+                        
+                        if (!otherPlayers[player.id]) {
+                            const clone = createOtherPlayer();
+                            if (clone) {
+                                clone.position.set(player.x, player.y, player.z);
+                                clone.rotation.y = player.rotY;
+                                scene.add(clone);
+                                otherPlayers[player.id] = clone;
+                            }
+                        } else {
+                            otherPlayers[player.id].position.set(player.x, player.y, player.z);
+                            otherPlayers[player.id].rotation.y = player.rotY;
                         }
                     }
-                    if (otherPlayers[conn.peer]) {
-                        otherPlayers[conn.peer].position.set(data.x, data.y, data.z);
-                        otherPlayers[conn.peer].rotation.y = data.rotY;
-                    }
-                });
-
-                conn.on('close', () => {
-                    if (otherPlayers[conn.peer]) {
-                        scene.remove(otherPlayers[conn.peer]);
-                        delete otherPlayers[conn.peer];
-                    }
-                });
-
-                sendMyState();
-            });
+                }
+            };
+            
+            ws.onclose = () => {
+                console.log('❌ Соединение разорвано');
+                document.getElementById('status').textContent = '❌ Отключено';
+                document.getElementById('status').style.color = '#ff0000';
+            };
+            
+            ws.onerror = (error) => {
+                console.error('❌ Ошибка WebSocket:', error);
+                document.getElementById('status').textContent = '❌ Ошибка';
+                document.getElementById('status').style.color = '#ff0000';
+            };
         }
-
-        document.getElementById('startBtn').addEventListener('click', initPeer);
-        document.getElementById('joinBtn').addEventListener('click', () => {
-            const code = document.getElementById('codeInput').value.trim();
-            if (code) connectToPeer(code);
-        });
 
         // =============================================================
-        // ИГРОВОЙ ЦИКЛ
+        // ЗАПУСК
+        // =============================================================
+        document.getElementById('startBtn').addEventListener('click', initServer);
+
+        // =============================================================
+        // ПЛАВНОЕ ПЕРЕКЛЮЧЕНИЕ АНИМАЦИЙ
         // =============================================================
         function switchAnimation(newAction) {
             if (currentAction === newAction) return;
@@ -471,6 +414,9 @@
             currentAction = newAction;
         }
 
+        // =============================================================
+        // ИГРОВОЙ ЦИКЛ
+        // =============================================================
         function animate() {
             requestAnimationFrame(animate);
             
@@ -522,10 +468,6 @@
                 
                 camera.position.copy(playerGroup.position.clone().add(cameraOffset));
                 camera.lookAt(playerGroup.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
-                
-                if (connection && connection.open && Math.random() < 0.2) {
-                    sendMyState();
-                }
                 
                 if (mixer) {
                     mixer.update(delta);
