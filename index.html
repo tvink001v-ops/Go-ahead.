@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Мультиплеер (PeerJS + Cloudflare)</title>
+    <title>3D Мультиплеер (Исправленный)</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
         #menu {
@@ -70,12 +70,14 @@
         <div class="sub">Загружаем модель и анимации...</div>
     </div>
 
+    <!-- ПРАВИЛЬНЫЙ СПОСОБ ЗАГРУЗКИ PEERJS (через Cloudflare) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+
     <script type="importmap">
         {
             "imports": {
                 "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-                "peerjs": "https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
             }
         }
     </script>
@@ -84,18 +86,9 @@
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         
-        // --- Загрузка PeerJS с защитой (если упадёт, играет одиночку) ---
-        let Peer;
-        let peerLoaded = false;
-        try {
-            // Импортируем через CDN
-            const module = await import('peerjs');
-            Peer = module.default || module.Peer;
-            peerLoaded = true;
-            console.log('✅ PeerJS загружен через Cloudflare!');
-        } catch (e) {
-            console.warn('⚠️ PeerJS не загрузился. Игра будет одиночной.', e);
-        }
+        // --- Проверка PeerJS ---
+        console.log('✅ PeerJS загружен через скрипт!');
+        const Peer = window.Peer || window.peerjs?.Peer;
 
         // --- Сцена, Камера, Рендерер ---
         const scene = new THREE.Scene();
@@ -305,28 +298,28 @@
         });
         
         // =============================================================
-        // МУЛЬТИПЛЕЕР (PeerJS с защитой)
+        // МУЛЬТИПЛЕЕР (PeerJS)
         // =============================================================
         let peer;
         let conn;
         let otherPlayers = {};
         let myId = '';
-        let multiplayerEnabled = false;
         const ROOM_NAME = 'my-unique-room-id-for-2-players';
 
         function initPeer() {
-            if (!peerLoaded) {
-                console.warn('⚠️ PeerJS не загружен. Играем в одиночку.');
+            if (typeof Peer === 'undefined') {
+                console.warn('⚠️ PeerJS не загружен! Играем в одиночку.');
                 startGame();
                 return;
             }
             
-            multiplayerEnabled = true;
+            console.log('🚀 Запускаем PeerJS...');
             peer = new Peer(null, { debug: 2 });
             
             peer.on('open', (id) => {
                 myId = id;
                 console.log('✅ Ваш ID:', myId);
+                // Пытаемся подключиться к существующей комнате
                 conn = peer.connect(ROOM_NAME, { reliable: true });
                 conn.on('open', () => {
                     console.log('✅ Подключено к комнате! Вы второй игрок.');
@@ -337,6 +330,7 @@
                 });
             });
 
+            // Если комнаты нет, создаём её (первый игрок)
             peer.on('error', (err) => {
                 if (err.type === 'peer-unavailable' || err.type === 'unavailable-id') {
                     console.log('🔄 Комната не найдена. Создаём новую...');
