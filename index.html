@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Мультиплеер (Исправленный)</title>
+    <title>3D Multiplayer (Photon локально)</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
         #menu {
@@ -70,8 +70,8 @@
         <div class="sub">Загружаем модель и анимации...</div>
     </div>
 
-    <!-- ПРАВИЛЬНЫЙ СПОСОБ ЗАГРУЗКИ PEERJS (через Cloudflare) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+    <!-- ФАЙЛ ЛЕЖИТ ПРЯМО В ВАШЕМ РЕПОЗИТОРИИ -->
+    <script src="./photon.min.js"></script>
 
     <script type="importmap">
         {
@@ -86,9 +86,13 @@
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         
-        // --- Проверка PeerJS ---
-        console.log('✅ PeerJS загружен через скрипт!');
-        const Peer = window.Peer || window.peerjs?.Peer;
+        // --- Проверка Photon ---
+        if (typeof Photon === 'undefined') {
+            console.error('❌ КРИТИЧЕСКАЯ ОШИБКА: Photon не загружен! Проверьте, что файл photon.min.js лежит в корне репозитория.');
+            alert('Photon не загружен! Загрузите photon.min.js в корень репозитория.');
+        } else {
+            console.log('✅ Photon загружен локально!');
+        }
 
         // --- Сцена, Камера, Рендерер ---
         const scene = new THREE.Scene();
@@ -298,81 +302,87 @@
         });
         
         // =============================================================
-        // МУЛЬТИПЛЕЕР (PeerJS)
+        // PHOTON МУЛЬТИПЛЕЕР
         // =============================================================
-        let peer;
-        let conn;
+        let loadBalancingClient = null;
         let otherPlayers = {};
-        let myId = '';
-        const ROOM_NAME = 'my-unique-room-id-for-2-players';
+        let myActorNumber = 0;
+        const ROOM_NAME = 'My3DGameRoom';
+        const APP_ID = '19e941e7-99db-4b55-bb0d-53d6d9a0b830';
 
-        function initPeer() {
-            if (typeof Peer === 'undefined') {
-                console.warn('⚠️ PeerJS не загружен! Играем в одиночку.');
-                startGame();
+        function initPhoton() {
+            if (typeof Photon === 'undefined') {
+                alert('Ошибка! Не удалось загрузить photon.min.js. Проверьте, что файл есть в репозитории.');
                 return;
             }
             
-            console.log('🚀 Запускаем PeerJS...');
-            peer = new Peer(null, { debug: 2 });
+            console.log('🚀 Подключаемся к Photon Cloud...');
+            loadBalancingClient = new Photon.LoadBalancingClient(
+                Photon.ConnectionProtocol.Wss,
+                APP_ID,
+                Photon.LoadBalancingClient.DefaultServer,
+                Photon.LoadBalancingClient.DefaultPort,
+                Photon.LoadBalancingClient.DefaultVersion
+            );
             
-            peer.on('open', (id) => {
-                myId = id;
-                console.log('✅ Ваш ID:', myId);
-                // Пытаемся подключиться к существующей комнате
-                conn = peer.connect(ROOM_NAME, { reliable: true });
-                conn.on('open', () => {
-                    console.log('✅ Подключено к комнате! Вы второй игрок.');
-                    startGame();
-                });
-                conn.on('data', (data) => {
-                    if (data.type === 'move') updateOtherPlayer(data);
-                });
+            loadBalancingClient.connect();
+
+            loadBalancingClient.on(Photon.LoadBalancingClient.EVENT_CONNECT, () => {
+                console.log('✅ Подключено к серверу Photon!');
+                loadBalancingClient.opJoinOrCreateRoom(ROOM_NAME);
             });
 
-            // Если комнаты нет, создаём её (первый игрок)
-            peer.on('error', (err) => {
-                if (err.type === 'peer-unavailable' || err.type === 'unavailable-id') {
-                    console.log('🔄 Комната не найдена. Создаём новую...');
-                    setTimeout(() => {
-                        conn = peer.connect(ROOM_NAME, { reliable: true });
-                        conn.on('open', () => {
-                            console.log('✅ Вы создали комнату! Вы первый игрок.');
-                            startGame();
-                        });
-                        conn.on('data', (data) => {
-                            if (data.type === 'move') updateOtherPlayer(data);
-                        });
-                    }, 1000);
+            loadBalancingClient.on(Photon.LoadBalancingClient.EVENT_JOIN_ROOM, () => {
+                myActorNumber = loadBalancingClient.actorNumber;
+                console.log(`✅ Вошли в комнату! Ваш номер: ${myActorNumber}`);
+                
+                document.getElementById('menu').style.display = 'none';
+                document.getElementById('ui').style.display = 'block';
+                isPlaying = true;
+            });
+
+            loadBalancingClient.on(Photon.LoadBalancingClient.EVENT_EVENT_DATA, (eventData) => {
+                if (eventData.code === 1) {
+                    const data = JSON.parse(eventData.data);
+                    if (data.type === 'move') {
+                        updateOtherPlayer(data);
+                    }
                 }
             });
-        }
 
-        function startGame() {
-            document.getElementById('menu').style.display = 'none';
-            document.getElementById('ui').style.display = 'block';
-            isPlaying = true;
+            loadBalancingClient.on(Photon.LoadBalancingClient.EVENT_ERROR, (error) => {
+                console.error('❌ Ошибка Photon:', error);
+            });
+
+            loadBalancingClient.on(Photon.LoadBalancingClient.EVENT_DISCONNECT, () => {
+                console.log('⚠️ Отключено от Photon.');
+            });
         }
 
         function sendMyState() {
-            if (conn && conn.open) {
-                conn.send({
+            if (loadBalancingClient && loadBalancingClient.isInRoom) {
+                const data = {
                     type: 'move',
-                    id: myId,
+                    actor: myActorNumber,
                     x: playerGroup.position.x,
                     y: playerGroup.position.y,
                     z: playerGroup.position.z,
                     rotY: playerGroup.rotation.y,
                     anim: isDancingMode ? 'dance' : (isWalking ? 'walk' : 'idle')
-                });
+                };
+                try {
+                    loadBalancingClient.opRaiseEvent(1, JSON.stringify(data));
+                } catch (e) {
+                    console.error('Ошибка отправки события:', e);
+                }
             }
         }
 
         function updateOtherPlayer(data) {
-            if (data.id === myId) return;
+            if (data.actor === myActorNumber) return;
             
-            if (otherPlayers[data.id]) {
-                const remote = otherPlayers[data.id];
+            if (otherPlayers[data.actor]) {
+                const remote = otherPlayers[data.actor];
                 remote.position.set(data.x, data.y, data.z);
                 remote.rotation.y = data.rotY;
             } else {
@@ -382,8 +392,8 @@
                 clone.position.set(data.x, data.y + 0.2, data.z);
                 clone.rotation.y = data.rotY;
                 scene.add(clone);
-                otherPlayers[data.id] = clone;
-                console.log('👥 Игрок подключился:', data.id);
+                otherPlayers[data.actor] = clone;
+                console.log('👥 Игрок подключился:', data.actor);
             }
         }
 
@@ -391,7 +401,7 @@
         // ЗАПУСК
         // =============================================================
         document.getElementById('startBtn').addEventListener('click', () => {
-            initPeer();
+            initPhoton();
         });
         
         // --- Плавное переключение анимаций ---
@@ -456,7 +466,7 @@
                 camera.position.copy(playerGroup.position.clone().add(cameraOffset));
                 camera.lookAt(playerGroup.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
                 
-                if (conn && conn.open) {
+                if (loadBalancingClient && loadBalancingClient.isInRoom) {
                     sendMyState();
                 }
                 
