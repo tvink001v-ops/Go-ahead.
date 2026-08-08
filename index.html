@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Игра (Photon Realtime Multiplayer)</title>
+    <title>3D Игра (Отладка Photon)</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
         #menu {
@@ -83,7 +83,8 @@
     <script type="module">
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
-        import * as Photon from 'photon';
+        // ПРАВИЛЬНЫЙ ИМПОРТ PHOTON
+        import { LoadBalancingClient, ConnectionProtocol } from 'photon';
         
         // --- Сцена, Камера, Рендерер ---
         const scene = new THREE.Scene();
@@ -151,8 +152,8 @@
         const loadingText = document.getElementById('loadingText');
         
         // --- НАСТРОЙКИ БАЛАНСА ---
-        const speed = 0.07;             // Скорость движения
-        const walkTimeScale = 1.4;      // Скорость анимации ходьбы (подгоните!)
+        const speed = 0.07;
+        const walkTimeScale = 1.4;
         
         async function loadModels() {
             loadingDiv.style.display = 'block';
@@ -292,52 +293,49 @@
             }
         });
         
-        // --- МУЛЬТИПЛЕЕР (Photon Cloud) ---
+        // --- МУЛЬТИПЛЕЕР (ОТЛАДКА) ---
         let loadBalancingClient = null;
         let otherPlayers = {};
         let myActorNumber = 0;
-        let photonConnected = false;
-        let photonError = false;
         const ROOM_NAME = "My3DGameRoom";
-        const APP_ID = "19e941e7-99db-4b55-bb0d-53d6d9a0b830"; // ВАШ APP ID УЖЕ ВСТАВЛЕН!
+        const APP_ID = "19e941e7-99db-4b55-bb0d-53d6d9a0b830";
 
         async function startMultiplayer() {
+            console.log('▶️ 1. Нажата кнопка, начинаем инициализацию Photon...');
+            
             try {
-                // Создаём клиент Photon
-                loadBalancingClient = new Photon.LoadBalancingClient(
-                    Photon.ConnectionProtocol.Wss,
+                console.log('▶️ 2. Создаём LoadBalancingClient с APP_ID:', APP_ID);
+                
+                loadBalancingClient = new LoadBalancingClient(
+                    ConnectionProtocol.Wss,
                     APP_ID,
-                    Photon.LoadBalancingClient.DefaultServer,
-                    Photon.LoadBalancingClient.DefaultPort,
-                    Photon.LoadBalancingClient.DefaultVersion
+                    "wss://ns.photonengine.io", // Явный адрес сервера
+                    9090,                      // Порт WSS
+                    "1.0.0.0"
                 );
-
-                // Подключаемся к облаку
+                
+                console.log('▶️ 3. Клиент создан! Пытаемся подключиться...');
                 loadBalancingClient.connect();
-                console.log("🔄 Подключаемся к Photon Cloud...");
+                console.log('▶️ 4. Команда connect() отправлена.');
 
-                // Слушаем события подключения
-                loadBalancingClient.on(Photon.LoadBalancingClient.EVENT_CONNECT, () => {
-                    console.log("✅ Подключено к Photon!");
-                    photonConnected = true;
-                    // Создаём или входим в комнату
+                // --- Обработчики событий ---
+                loadBalancingClient.on(LoadBalancingClient.EVENT_CONNECT, () => {
+                    console.log('✅ 5. Подключено к серверу Photon!');
+                    console.log('▶️ 6. Создаём комнату:', ROOM_NAME);
                     loadBalancingClient.opJoinOrCreateRoom(ROOM_NAME);
                 });
 
-                // Слушаем вход в комнату
-                loadBalancingClient.on(Photon.LoadBalancingClient.EVENT_JOIN_ROOM, () => {
+                loadBalancingClient.on(LoadBalancingClient.EVENT_JOIN_ROOM, () => {
                     myActorNumber = loadBalancingClient.actorNumber;
-                    console.log(`✅ Вошли в комнату! Ваш номер: ${myActorNumber}`);
+                    console.log(`✅ 7. Вошли в комнату! Ваш ActorNumber: ${myActorNumber}`);
                     
-                    // Убираем меню
                     document.getElementById('menu').style.display = 'none';
                     document.getElementById('ui').style.display = 'block';
                     isPlaying = true;
                 });
 
-                // Слушаем данные от других игроков
-                loadBalancingClient.on(Photon.LoadBalancingClient.EVENT_EVENT_DATA, (eventData) => {
-                    if (eventData.code === 1) { // Наш код события
+                loadBalancingClient.on(LoadBalancingClient.EVENT_EVENT_DATA, (eventData) => {
+                    if (eventData.code === 1) {
                         const data = JSON.parse(eventData.data);
                         if (data.type === 'move') {
                             updateOtherPlayer(data);
@@ -345,22 +343,18 @@
                     }
                 });
 
-                // Слушаем ошибки
-                loadBalancingClient.on(Photon.LoadBalancingClient.EVENT_ERROR, (error) => {
+                loadBalancingClient.on(LoadBalancingClient.EVENT_ERROR, (error) => {
                     console.error('❌ Ошибка Photon:', error);
-                    photonError = true;
-                    alert('Ошибка соединения! Проверьте App ID.');
+                    alert('Ошибка соединения! Смотрите консоль (F12).');
                 });
 
-                // Слушаем потерю соединения
-                loadBalancingClient.on(Photon.LoadBalancingClient.EVENT_DISCONNECT, () => {
+                loadBalancingClient.on(LoadBalancingClient.EVENT_DISCONNECT, () => {
                     console.log('⚠️ Отключено от Photon.');
                 });
 
             } catch (error) {
-                console.error('❌ Критическая ошибка Photon:', error);
-                photonError = true;
-                alert('Ошибка инициализации Photon! Проверьте App ID.');
+                console.error('❌ КРИТИЧЕСКАЯ ОШИБКА В БЛОКЕ TRY:', error);
+                alert('Критическая ошибка! Проверьте консоль (F12).');
             }
         }
 
@@ -375,20 +369,22 @@
                     rotY: playerGroup.rotation.y,
                     anim: isDancingMode ? 'dance' : (isWalking ? 'walk' : 'idle')
                 };
-                // Отправляем событие другим игрокам в комнате
-                loadBalancingClient.opRaiseEvent(1, JSON.stringify(data));
+                try {
+                    loadBalancingClient.opRaiseEvent(1, JSON.stringify(data));
+                } catch (e) {
+                    console.error('Ошибка отправки события:', e);
+                }
             }
         }
 
         function updateOtherPlayer(data) {
-            if (data.actor === myActorNumber) return; // Игнорируем свои данные
+            if (data.actor === myActorNumber) return;
             
             if (otherPlayers[data.actor]) {
                 const remote = otherPlayers[data.actor];
                 remote.model.position.set(data.x, data.y, data.z);
                 remote.model.rotation.y = data.rotY;
             } else {
-                // Создаём клон модели для нового игрока
                 if (!mainModel) return;
                 const clone = mainModel.clone();
                 clone.scale.set(0.01, 0.01, 0.01);
@@ -396,16 +392,15 @@
                 clone.rotation.y = data.rotY;
                 scene.add(clone);
                 otherPlayers[data.actor] = { model: clone };
-                console.log(`👥 Новый игрок подключился: ${data.actor}`);
+                console.log(`👥 Новый игрок: ${data.actor}`);
             }
         }
 
-        // --- Кнопка ВОЙТИ В ИГРУ ---
         document.getElementById('startBtn').addEventListener('click', () => {
+            console.clear(); // Очистить консоль перед запуском
             startMultiplayer();
         });
         
-        // --- Плавное переключение анимаций ---
         function switchAnimation(newAction) {
             if (currentAction === newAction) return;
             if (currentAction) currentAction.fadeOut(0.1);
@@ -413,7 +408,6 @@
             currentAction = newAction;
         }
 
-        // --- Игровой цикл ---
         function animate() {
             requestAnimationFrame(animate);
             
@@ -422,7 +416,6 @@
             lastTime = now;
             
             if (isPlaying && modelsLoaded) {
-                // --- Движение игрока ---
                 const forward = new THREE.Vector3(-Math.sin(cameraAngleHorizontal), 0, -Math.cos(cameraAngleHorizontal));
                 const right = new THREE.Vector3(Math.cos(cameraAngleHorizontal), 0, -Math.sin(cameraAngleHorizontal));
                 
@@ -443,26 +436,12 @@
                     isWalking = false;
                 }
                 
-                // --- Логика танца ---
-                if (isWalking && isDancingMode) {
-                    isDancingMode = false;
-                }
+                if (isWalking && isDancingMode) isDancingMode = false;
                 
-                if (isDancingMode) {
-                    if (currentAction !== actions.dance) {
-                        switchAnimation(actions.dance);
-                    }
-                } else if (isWalking) {
-                    if (currentAction !== actions.walk) {
-                        switchAnimation(actions.walk);
-                    }
-                } else {
-                    if (currentAction !== actions.idle) {
-                        switchAnimation(actions.idle);
-                    }
-                }
+                if (isDancingMode && currentAction !== actions.dance) switchAnimation(actions.dance);
+                else if (isWalking && currentAction !== actions.walk) switchAnimation(actions.walk);
+                else if (!isWalking && currentAction !== actions.idle) switchAnimation(actions.idle);
                 
-                // --- Физика ---
                 if (keys.space && playerGroup.position.y <= groundY + 0.01) {
                     verticalVelocity = jumpSpeed;
                 }
@@ -473,7 +452,6 @@
                     verticalVelocity = 0;
                 }
                 
-                // --- Камера ---
                 const cameraOffset = new THREE.Vector3(
                     Math.sin(cameraAngleHorizontal) * Math.cos(cameraAngleVertical) * cameraDistance,
                     Math.sin(cameraAngleVertical) * cameraDistance + 0.5,
@@ -483,12 +461,10 @@
                 camera.position.copy(playerGroup.position.clone().add(cameraOffset));
                 camera.lookAt(playerGroup.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
                 
-                // --- Отправка данных в Photon ---
                 if (loadBalancingClient && loadBalancingClient.isInRoom) {
                     sendMyState();
                 }
                 
-                // --- Обновление анимаций ---
                 if (mixer) {
                     mixer.update(delta);
                 }
