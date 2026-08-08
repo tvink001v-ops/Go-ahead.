@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Мультиплеер (Photon)</title>
+    <title>3D Мультиплеер (Бесплатно, без серверов)</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
         #menu {
@@ -54,7 +54,39 @@
             display: none;
             text-align: center;
         }
-        #loading .sub { font-size: 1.2rem; margin-top: 10px; opacity: 0.8; }
+        #roomCode {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 15;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 1.5rem;
+            display: none;
+            text-align: center;
+            pointer-events: auto;
+        }
+        #roomCode input {
+            padding: 10px;
+            font-size: 1.2rem;
+            border-radius: 5px;
+            border: none;
+            width: 200px;
+            text-align: center;
+        }
+        #roomCode button {
+            padding: 10px 20px;
+            font-size: 1.2rem;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -69,6 +101,11 @@
         <div id="loadingText">Загрузка: 0%</div>
         <div class="sub">Загружаем модель и анимации...</div>
     </div>
+    <div id="roomCode">
+        <div>Код комнаты: <span id="codeDisplay">---</span></div>
+        <input id="codeInput" placeholder="Введите код" />
+        <button id="joinBtn">ПОДКЛЮЧИТЬСЯ</button>
+    </div>
 
     <script type="importmap">
         {
@@ -79,38 +116,28 @@
         }
     </script>
 
-    <!-- Photon SDK через CDN - обычный скрипт, не модуль -->
-    <script src="https://cdn.jsdelivr.net/npm/photon-js-sdk@4.1.1/dist/photon.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
 
     <script type="module">
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
-        // =============================================================
-        // ЖДЕМ ЗАГРУЗКИ PHOTON
-        // =============================================================
-        console.log('⏳ Ожидание загрузки Photon...');
-        
-        // Ждем пока Photon появится в глобальном пространстве
+        console.log('⏳ Ожидание PeerJS...');
         await new Promise((resolve) => {
-            const checkPhoton = () => {
-                if (window.Photon) {
-                    console.log('✅ Photon загружен!');
+            const check = () => {
+                if (window.Peer) {
+                    console.log('✅ PeerJS загружен!');
                     resolve();
                 } else {
-                    setTimeout(checkPhoton, 100);
+                    setTimeout(check, 100);
                 }
             };
-            checkPhoton();
+            check();
         });
 
         // =============================================================
-        // НАСТРОЙКИ PHOTON
+        // СЦЕНА
         // =============================================================
-        const PHOTON_APP_ID = '19e941e7-99db-4b55-bb0d-53d6d9a0b830';
-        const PHOTON_APP_VERSION = '1.0';
-        
-        // --- Сцена, Камера, Рендерер ---
         const scene = new THREE.Scene();
         const skyTexture = new THREE.TextureLoader().load('https://raw.githubusercontent.com/tvink001v-ops/Go-ahead./main/57403fb0a6c9c154d2f8ca2b.jpg');
         scene.background = skyTexture;
@@ -162,7 +189,9 @@
         let cameraAngleVertical = 0.5;
         let cameraDistance = 5;
         
-        // --- Загрузка FBX ---
+        // =============================================================
+        // ЗАГРУЗКА FBX МОДЕЛЕЙ
+        // =============================================================
         const fbxLoader = new FBXLoader();
         let mainModel = null;
         let mixer = null;
@@ -314,12 +343,13 @@
         });
         
         // =============================================================
-        // PHOTON МУЛЬТИПЛЕЕР
+        // PEERJS МУЛЬТИПЛЕЕР (БЕСПЛАТНО, БЕЗ СЕРВЕРА)
         // =============================================================
-        let photon = null;
+        let peer = null;
+        let connection = null;
         let otherPlayers = {};
-        let myActorNumber = 0;
-        let isPhotonReady = false;
+        let myPeerId = '';
+        let isHost = false;
 
         function createOtherPlayer() {
             if (!mainModel) return null;
@@ -328,118 +358,9 @@
             return clone;
         }
 
-        function initPhoton() {
-            if (!window.Photon) {
-                console.error('❌ Photon не загружен! Проверьте интернет.');
-                return;
-            }
-            
-            // Инициализация Photon - используем window.Photon вместо Photon
-            const PhotonSDK = window.Photon;
-            
-            photon = new PhotonSDK.LoadBalancing.LoadBalancingClient(
-                PHOTON_APP_ID, 
-                PHOTON_APP_VERSION
-            );
-            
-            // Настройки подключения
-            photon.setLogLevel(PhotonSDK.LoadBalancing.LoadBalancingClient.LogLevel.Warning);
-            photon.setUseWebSocket(true);
-            
-            // Слушаем события
-            photon.addEventListener(PhotonSDK.LoadBalancing.LoadBalancingClient.EventName.Connect, (args) => {
-                console.log('✅ Подключен к Photon Cloud!');
-                photon.opJoinRandomRoom();
-            });
-            
-            photon.addEventListener(PhotonSDK.LoadBalancing.LoadBalancingClient.EventName.Error, (args) => {
-                console.error('❌ Ошибка Photon:', args.errorMessage);
-            });
-            
-            photon.addEventListener(PhotonSDK.LoadBalancing.LoadBalancingClient.EventName.JoinRandomRoomFailed, (args) => {
-                // Если нет комнат, создаем свою
-                photon.opCreateRoom('3d-game-room', {
-                    maxPlayers: 10,
-                    roomName: '3D Multiplayer',
-                    customProperties: { game: '3d' }
-                });
-            });
-            
-            photon.addEventListener(PhotonSDK.LoadBalancing.LoadBalancingClient.EventName.JoinRoom, (args) => {
-                console.log('✅ Присоединился к комнате!');
-                myActorNumber = photon.getLocalPlayer().actorNumber;
-                
-                // Создаем своих игроков уже в комнате
-                const players = photon.getPlayers();
-                for (const [key, player] of players) {
-                    if (player.actorNumber !== myActorNumber) {
-                        const customProps = player.getProperties();
-                        if (customProps && customProps.x !== undefined) {
-                            const clone = createOtherPlayer();
-                            if (clone) {
-                                clone.position.set(customProps.x, customProps.y || 0, customProps.z);
-                                clone.rotation.y = customProps.rotY || 0;
-                                scene.add(clone);
-                                otherPlayers[player.actorNumber] = clone;
-                            }
-                        }
-                    }
-                }
-                
-                document.getElementById('menu').style.display = 'none';
-                document.getElementById('ui').style.display = 'block';
-                isPlaying = true;
-                isPhotonReady = true;
-                
-                // Отправляем начальную позицию
-                sendMyState();
-            });
-            
-            photon.addEventListener(PhotonSDK.LoadBalancing.LoadBalancingClient.EventName.PlayerPropertiesChanged, (args) => {
-                const player = args.player;
-                if (player.actorNumber === myActorNumber) return;
-                
-                const customProps = player.getProperties();
-                if (otherPlayers[player.actorNumber]) {
-                    if (customProps.x !== undefined && customProps.z !== undefined) {
-                        otherPlayers[player.actorNumber].position.set(
-                            customProps.x, 
-                            customProps.y || 0, 
-                            customProps.z
-                        );
-                        if (customProps.rotY !== undefined) {
-                            otherPlayers[player.actorNumber].rotation.y = customProps.rotY;
-                        }
-                    }
-                } else {
-                    // Новый игрок
-                    const clone = createOtherPlayer();
-                    if (clone && customProps.x !== undefined) {
-                        clone.position.set(customProps.x, customProps.y || 0, customProps.z);
-                        clone.rotation.y = customProps.rotY || 0;
-                        scene.add(clone);
-                        otherPlayers[player.actorNumber] = clone;
-                    }
-                }
-            });
-            
-            photon.addEventListener(PhotonSDK.LoadBalancing.LoadBalancingClient.EventName.PlayerLeave, (args) => {
-                const player = args.player;
-                if (otherPlayers[player.actorNumber]) {
-                    scene.remove(otherPlayers[player.actorNumber]);
-                    delete otherPlayers[player.actorNumber];
-                }
-            });
-            
-            // Подключаемся
-            console.log('🚀 Подключаемся к Photon Cloud...');
-            photon.connect();
-        }
-
         function sendMyState() {
-            if (photon && photon.isInRoom()) {
-                const player = photon.getLocalPlayer();
-                player.setCustomProperties({
+            if (connection && connection.open) {
+                connection.send({
                     x: playerGroup.position.x,
                     y: playerGroup.position.y,
                     z: playerGroup.position.z,
@@ -449,14 +370,100 @@
             }
         }
 
-        // =============================================================
-        // ЗАПУСК
-        // =============================================================
-        document.getElementById('startBtn').addEventListener('click', () => {
-            initPhoton();
+        function initPeer() {
+            // Российские STUN-серверы для быстрой связи
+            const config = {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun.yandex.ru:19302' },
+                    { urls: 'stun:stun.miwifi.com:3478' }
+                ]
+            };
+            
+            peer = new window.Peer(null, { config: config, debug: 2 });
+
+            peer.on('open', (id) => {
+                myPeerId = id;
+                console.log('✅ Peer ID:', id);
+                document.getElementById('codeDisplay').textContent = id;
+                document.getElementById('roomCode').style.display = 'block';
+                document.getElementById('menu').style.display = 'none';
+                isPlaying = true;
+                isHost = true;
+            });
+
+            peer.on('connection', (conn) => {
+                console.log('👥 Подключился игрок!');
+                connection = conn;
+                
+                connection.on('data', (data) => {
+                    if (!otherPlayers[conn.peer]) {
+                        const clone = createOtherPlayer();
+                        if (clone) {
+                            scene.add(clone);
+                            otherPlayers[conn.peer] = clone;
+                        }
+                    }
+                    if (otherPlayers[conn.peer]) {
+                        otherPlayers[conn.peer].position.set(data.x, data.y, data.z);
+                        otherPlayers[conn.peer].rotation.y = data.rotY;
+                    }
+                });
+
+                connection.on('close', () => {
+                    if (otherPlayers[conn.peer]) {
+                        scene.remove(otherPlayers[conn.peer]);
+                        delete otherPlayers[conn.peer];
+                    }
+                });
+
+                sendMyState();
+            });
+        }
+
+        function connectToPeer(peerId) {
+            const conn = peer.connect(peerId, { reliable: true });
+
+            conn.on('open', () => {
+                console.log('✅ Подключен к хосту!');
+                connection = conn;
+                document.getElementById('roomCode').style.display = 'none';
+                isHost = false;
+                
+                conn.on('data', (data) => {
+                    if (!otherPlayers[conn.peer]) {
+                        const clone = createOtherPlayer();
+                        if (clone) {
+                            scene.add(clone);
+                            otherPlayers[conn.peer] = clone;
+                        }
+                    }
+                    if (otherPlayers[conn.peer]) {
+                        otherPlayers[conn.peer].position.set(data.x, data.y, data.z);
+                        otherPlayers[conn.peer].rotation.y = data.rotY;
+                    }
+                });
+
+                conn.on('close', () => {
+                    if (otherPlayers[conn.peer]) {
+                        scene.remove(otherPlayers[conn.peer]);
+                        delete otherPlayers[conn.peer];
+                    }
+                });
+
+                sendMyState();
+            });
+        }
+
+        document.getElementById('startBtn').addEventListener('click', initPeer);
+        document.getElementById('joinBtn').addEventListener('click', () => {
+            const code = document.getElementById('codeInput').value.trim();
+            if (code) connectToPeer(code);
         });
-        
-        // --- Плавное переключение анимаций ---
+
+        // =============================================================
+        // ИГРОВОЙ ЦИКЛ
+        // =============================================================
         function switchAnimation(newAction) {
             if (currentAction === newAction) return;
             if (currentAction) currentAction.fadeOut(0.1);
@@ -464,7 +471,6 @@
             currentAction = newAction;
         }
 
-        // --- Игровой цикл ---
         function animate() {
             requestAnimationFrame(animate);
             
@@ -487,8 +493,7 @@
                     playerGroup.position.x += moveDirection.x * speed;
                     playerGroup.position.z += moveDirection.z * speed;
                     isWalking = true;
-                    const targetAngle = Math.atan2(moveDirection.x, moveDirection.z);
-                    playerGroup.rotation.y = targetAngle;
+                    playerGroup.rotation.y = Math.atan2(moveDirection.x, moveDirection.z);
                 } else {
                     isWalking = false;
                 }
@@ -518,8 +523,7 @@
                 camera.position.copy(playerGroup.position.clone().add(cameraOffset));
                 camera.lookAt(playerGroup.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
                 
-                // Отправляем позицию каждые 5 кадров
-                if (isPhotonReady && photon && photon.isInRoom() && Math.random() < 0.2) {
+                if (connection && connection.open && Math.random() < 0.2) {
                     sendMyState();
                 }
                 
