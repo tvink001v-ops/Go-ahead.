@@ -82,17 +82,22 @@
     <script type="module">
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+
+        // =============================================================
+        // ЗАГРУЗКА COLYSEUS ЧЕРЕЗ CDN (единственно верный способ)
+        // =============================================================
+        console.log('⏳ Загрузка Colyseus с CDN...');
+        const Colyseus = await import('https://cdnjs.cloudflare.com/ajax/libs/colyseus.js/0.14.0/colyseus.min.js')
+            .then(m => m.default || m)
+            .catch(e => {
+                console.error('❌ Ошибка загрузки Colyseus:', e);
+                return null;
+            });
         
-        // =============================================================
-        // ДИНАМИЧЕСКИЙ ИМПОРТ COLYSEUS (исправлена версия)
-        // =============================================================
-        let Colyseus = null;
-        try {
-            const module = await import('https://unpkg.com/colyseus.js@0.14.0/dist/colyseus.js');
-            Colyseus = module.default || module;
-            console.log('✅ Colyseus загружен!');
-        } catch (e) {
-            console.error('❌ Ошибка загрузки Colyseus:', e);
+        if (Colyseus) {
+            console.log('✅ Colyseus загружен! (версия с CDN)');
+        } else {
+            console.error('❌ Colyseus не загрузился!');
         }
         // =============================================================
 
@@ -304,7 +309,7 @@
         });
         
         // =============================================================
-        // COLYSEUS МУЛЬТИПЛЕЕР (исправленный конструктор)
+        // COLYSEUS МУЛЬТИПЛЕЕР (ФИНАЛЬНАЯ ВЕРСИЯ)
         // =============================================================
         let room = null;
         let otherPlayers = {};
@@ -316,10 +321,10 @@
                 return;
             }
             
-            // ✅ ИСПРАВЛЕННЫЙ КОНСТРУКТОР (используем default)
-            const client = new Colyseus.default.Client('wss://colyseus-game-server.onrender.com');
-            
             try {
+                // ✅ ПРАВИЛЬНЫЙ КОНСТРУКТОР
+                const client = new Colyseus.Client('wss://colyseus-game-server.onrender.com');
+                
                 console.log('🚀 Подключаемся к серверу Colyseus...');
                 room = await client.joinOrCreate('lobby');
                 mySessionId = room.sessionId;
