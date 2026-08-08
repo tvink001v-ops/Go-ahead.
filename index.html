@@ -84,7 +84,7 @@
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         
         // =============================================================
-        // ДИНАМИЧЕСКИЙ ИМПОРТ COLYSEUS (гарантированно работает)
+        // ДИНАМИЧЕСКИЙ ИМПОРТ COLYSEUS (исправлена версия)
         // =============================================================
         let Colyseus = null;
         try {
@@ -304,7 +304,7 @@
         });
         
         // =============================================================
-        // COLYSEUS МУЛЬТИПЛЕЕР (исправленный)
+        // COLYSEUS МУЛЬТИПЛЕЕР (исправленный конструктор)
         // =============================================================
         let room = null;
         let otherPlayers = {};
@@ -316,7 +316,8 @@
                 return;
             }
             
-            const client = new Colyseus.Client('wss://colyseus-game-server.onrender.com');
+            // ✅ ИСПРАВЛЕННЫЙ КОНСТРУКТОР (используем default)
+            const client = new Colyseus.default.Client('wss://colyseus-game-server.onrender.com');
             
             try {
                 console.log('🚀 Подключаемся к серверу Colyseus...');
