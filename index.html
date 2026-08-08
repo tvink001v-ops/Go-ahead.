@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Multiplayer (Photon готов)</title>
+    <title>3D Онлайн Игра (Photon Cloud)</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
         #menu {
@@ -70,8 +70,8 @@
         <div class="sub">Загружаем модель и анимации...</div>
     </div>
 
-    <!-- ФАЙЛ ЛЕЖИТ ПРЯМО В КОРНЕ ВАШЕГО РЕПОЗИТОРИЯ -->
-    <script src="./photon.min.js"></script>
+    <!-- ✅ БЕЗОПАСНАЯ ЗАГРУЗКА ЧЕРЕЗ САМЫЙ НАДЁЖНЫЙ CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/photon/1.0.0/photon.min.js"></script>
 
     <script type="importmap">
         {
@@ -88,9 +88,10 @@
         
         // --- Проверка Photon ---
         if (typeof Photon === 'undefined') {
-            console.error('❌ КРИТИЧЕСКАЯ ОШИБКА: Photon не загружен! Проверьте, что файл photon.min.js лежит в корне репозитория.');
+            console.error('❌ Ошибка: Photon не загрузился через CDN. Проверьте интернет.');
+            alert('Ошибка загрузки Photon. Проверьте интернет-соединение.');
         } else {
-            console.log('✅ Photon загружен локально!');
+            console.log('✅ Photon загружен через CDN!');
         }
 
         // --- Сцена, Камера, Рендерер ---
@@ -301,7 +302,7 @@
         });
         
         // =============================================================
-        // PHOTON МУЛЬТИПЛЕЕР (международный)
+        // PHOTON МУЛЬТИПЛЕЕР
         // =============================================================
         let loadBalancingClient = null;
         let otherPlayers = {};
@@ -311,7 +312,7 @@
 
         function initPhoton() {
             if (typeof Photon === 'undefined') {
-                alert('Ошибка! Не удалось загрузить photon.min.js. Убедитесь, что он лежит в корне.');
+                alert('Ошибка! Photon не загрузился. Проверьте интернет-соединение.');
                 return;
             }
             
