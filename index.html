@@ -29,7 +29,6 @@
         }
     </script>
 
-    <!-- Подключаем Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script type="module">
@@ -37,16 +36,14 @@
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
         // =============================================================
-        // НАСТРОЙКИ SUPABASE
+        // ВАШИ ДАННЫЕ SUPABASE
         // =============================================================
         const SUPABASE_URL = 'https://lpmpmcplydwcfrqoqz.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_KwUiuCe8QEsYngu9bBD6GQ_nKXnBE3i';
         
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        
-        // Генерируем уникальный ID и имя
         const myId = Math.random().toString(36).substring(2, 10);
-        const myName = "Я";
+        const myName = "Игрок " + Math.floor(Math.random() * 100);
 
         // =============================================================
         // СЦЕНА
@@ -72,7 +69,7 @@
         dirLight.castShadow = true;
         scene.add(dirLight);
         
-        // --- Бесконечная земля ---
+        // --- Земля ---
         function createGround() {
             const texture = new THREE.TextureLoader().load('https://raw.githubusercontent.com/tvink001v-ops/Go-ahead./main/1642522213_3-abrakadabra-fun-p-tekstura-travi-dlya-genplana-8.jpg');
             texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping; texture.repeat.set(300, 300);
@@ -97,7 +94,7 @@
         let cameraDistance = 5;
         
         // =============================================================
-        // ЗАГРУЗКА БАЗОВОЙ МОДЕЛИ
+        // ЗАГРУЗКА МОДЕЛИ
         // =============================================================
         const fbxLoader = new FBXLoader();
         let mainModel = null;
@@ -130,10 +127,7 @@
                 const box = new THREE.Box3().setFromObject(modelFbx);
                 modelFbx.position.sub(box.getCenter(new THREE.Vector3()));
                 modelFbx.position.y -= box.min.y * scale;
-                
-                // ===== СОХРАНЯЕМ ЧИСТУЮ МОДЕЛЬ ДЛЯ КЛОНИРОВАНИЯ =====
                 mainModel = modelFbx;
-                
                 const idleAnim = modelFbx.animations[0];
                 const walkAnim = walkFbx?.animations[0];
                 const danceAnim = danceFbx?.animations[0];
@@ -203,89 +197,34 @@
         }
 
         // =============================================================
-        // ФУНКЦИИ ДЛЯ МУЛЬТИПЛЕЕРА
-        // =============================================================
-
-        // Функция создания спрайта (ника)
-        function createNameTag(name, isMain = false) {
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.width = 256;
-            canvas.height = 64;
-            
-            ctx.fillStyle = isMain ? 'rgba(255, 215, 0, 0.8)' : 'rgba(0, 0, 0, 0.7)';
-            ctx.roundRect(10, 10, canvas.width - 20, canvas.height - 20, 20);
-            ctx.fill();
-            
-            ctx.fillStyle = isMain ? '#000' : '#fff';
-            ctx.font = 'bold 36px Arial';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(name, canvas.width / 2, canvas.height / 2);
-            
-            const texture = new THREE.CanvasTexture(canvas);
-            const material = new THREE.SpriteMaterial({ map: texture, depthTest: false });
-            const sprite = new THREE.Sprite(material);
-            sprite.scale.set(1.5, 0.4, 1);
-            return sprite;
-        }
-
-        // Создать модель для ДРУГОГО игрока (она всегда красная)
-        function createOtherPlayerModel(name) {
-            if (!mainModel) return null;
-            
-            // Клонируем ЧИСТУЮ модель (не тронутую)
-            const clone = mainModel.clone();
-            clone.scale.set(0.01, 0.01, 0.01);
-            
-            // Перекрашиваем в КРАСНЫЙ
-            clone.traverse((child) => {
-                if (child.isMesh) {
-                    child.material = child.material.clone();
-                    child.material.color.setHex(0xcc3333); 
-                }
-            });
-            
-            // Вешаем ник
-            const nameTag = createNameTag(name, false);
-            nameTag.position.y = 1.8;
-            clone.add(nameTag);
-            
-            return clone;
-        }
-
-        // Настроить МОЮ модель (она всегда золотая)
-        function setupMyModel() {
-            if (!mainModel) return;
-            
-            // Перекрашиваем в ЗОЛОТОЙ
-            mainModel.traverse((child) => {
-                if (child.isMesh) {
-                    child.material = child.material.clone();
-                    child.material.color.setHex(0xffaa00);
-                    child.material.emissive = new THREE.Color(0x442200);
-                }
-            });
-            
-            // Вешаем свой ник
-            const myNameTag = createNameTag(myName, true);
-            myNameTag.position.y = 1.8;
-            playerGroup.add(myNameTag);
-        }
-
-        // =============================================================
-        // МУЛЬТИПЛЕЕР (SUPABASE)
+        // МУЛЬТИПЛЕЕР SUPABASE
         // =============================================================
         let otherPlayers = {};
         let isConnected = false;
         let updateInterval = null;
+
+        function createOtherPlayer() {
+            if (!mainModel) return null;
+            const clone = mainModel.clone();
+            clone.scale.set(0.01, 0.01, 0.01);
+            clone.traverse((child) => {
+                if (child.isMesh) {
+                    child.material = child.material.clone();
+                    child.material.color.setHex(0xcc3333);
+                }
+            });
+            return clone;
+        }
 
         async function initMultiplayer() {
             document.getElementById('status').style.display = 'block';
             document.getElementById('status').textContent = '⏳ Регистрация...';
             
             try {
-                // Регистрируемся в БД
+                // Проверяем соединение
+                const test = await supabase.from('players').select('id').limit(1);
+                if (test.error) throw test.error;
+
                 await supabase.from('players').upsert({
                     id: myId,
                     name: myName,
@@ -294,74 +233,80 @@
                 });
                 
                 // Красим себя в золотой
-                setupMyModel();
-                
+                mainModel.traverse((child) => {
+                    if (child.isMesh) {
+                        child.material = child.material.clone();
+                        child.material.color.setHex(0xffaa00);
+                        child.material.emissive = new THREE.Color(0x442200);
+                    }
+                });
+
                 isConnected = true;
                 document.getElementById('status').textContent = '✅ Онлайн';
                 document.getElementById('menu').style.display = 'none';
                 document.getElementById('ui').style.display = 'block';
                 isPlaying = true;
                 
-                updateInterval = setInterval(syncLoop, 50);
+                updateInterval = setInterval(syncLoop, 100);
                 
             } catch (error) {
-                console.error('Ошибка подключения к Supabase:', error);
-                document.getElementById('status').textContent = '❌ Ошибка БД';
+                console.error('Ошибка подключения:', error);
+                document.getElementById('status').textContent = '❌ Ошибка соединения';
             }
         }
 
         async function syncLoop() {
             if (!isConnected || !isPlaying) return;
             
-            // 1. Отправляем свою позицию
-            await supabase.from('players').upsert({
-                id: myId,
-                name: myName,
-                x: playerGroup.position.x,
-                y: playerGroup.position.y,
-                z: playerGroup.position.z,
-                rot_y: playerGroup.rotation.y,
-                last_seen: new Date().toISOString()
-            });
+            // 1. Отправляем свою позицию (с обработкой ошибок)
+            try {
+                await supabase.from('players').upsert({
+                    id: myId,
+                    name: myName,
+                    x: playerGroup.position.x,
+                    y: playerGroup.position.y,
+                    z: playerGroup.position.z,
+                    rot_y: playerGroup.rotation.y,
+                    last_seen: new Date().toISOString()
+                });
+            } catch (e) {
+                // Просто пропускаем, если ошибка
+                return;
+            }
 
             // 2. Получаем других игроков
-            const twoSecondsAgo = new Date(Date.now() - 2000).toISOString();
-            const { data: players, error } = await supabase
-                .from('players')
-                .select('id, name, x, y, z, rot_y')
-                .gt('last_seen', twoSecondsAgo)
-                .neq('id', myId);
-
-            if (error) {
-                console.error('Ошибка получения игроков:', error);
+            let players = [];
+            try {
+                const twoSecondsAgo = new Date(Date.now() - 3000).toISOString();
+                const { data, error } = await supabase
+                    .from('players')
+                    .select('id, name, x, y, z, rot_y')
+                    .gt('last_seen', twoSecondsAgo)
+                    .neq('id', myId);
+                if (!error && data) players = data;
+            } catch (e) {
                 return;
             }
 
             // 3. Синхронизируем
-            if (players) {
-                // Удаляем вышедших
-                for (const key in otherPlayers) {
-                    if (!players.find(p => p.id === key)) {
-                        scene.remove(otherPlayers[key]);
-                        delete otherPlayers[key];
-                    }
+            for (const key in otherPlayers) {
+                if (!players.find(p => p.id === key)) {
+                    scene.remove(otherPlayers[key]);
+                    delete otherPlayers[key];
                 }
-                
-                // Добавляем/обновляем
-                for (const player of players) {
-                    if (!otherPlayers[player.id]) {
-                        // Создаём КРАСНОГО игрока
-                        const clone = createOtherPlayerModel(player.name || 'Игрок');
-                        if (clone) {
-                            clone.position.set(player.x, player.y, player.z);
-                            clone.rotation.y = player.rot_y || 0;
-                            scene.add(clone);
-                            otherPlayers[player.id] = clone;
-                        }
-                    } else {
-                        otherPlayers[player.id].position.set(player.x, player.y, player.z);
-                        otherPlayers[player.id].rotation.y = player.rot_y || 0;
+            }
+            for (const player of players) {
+                if (!otherPlayers[player.id]) {
+                    const clone = createOtherPlayer();
+                    if (clone) {
+                        clone.position.set(player.x, player.y, player.z);
+                        clone.rotation.y = player.rot_y || 0;
+                        scene.add(clone);
+                        otherPlayers[player.id] = clone;
                     }
+                } else {
+                    otherPlayers[player.id].position.set(player.x, player.y, player.z);
+                    otherPlayers[player.id].rotation.y = player.rot_y || 0;
                 }
             }
         }
