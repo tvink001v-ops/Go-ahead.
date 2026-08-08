@@ -30,6 +30,8 @@
             cursor: pointer;
             box-shadow: 0 0 30px rgba(76, 175, 80, 0.5);
             transition: transform 0.2s;
+            z-index: 100;
+            position: relative;
         }
         #startBtn:hover { transform: scale(1.1); }
         #ui {
@@ -87,7 +89,7 @@
     <script type="module">
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
-        import { Peer } from 'peerjs'; // ПРАВИЛЬНЫЙ ИМПОРТ
+        import { Peer } from 'peerjs';
         
         // --- Сцена, Камера, Рендерер ---
         const scene = new THREE.Scene();
@@ -173,7 +175,7 @@
                             (fbx) => resolve(fbx),
                             (xhr) => {
                                 const total = urls.length;
-                                const loaded = urls.filter(u => u !== url).length; // приблизительно
+                                const loaded = urls.filter(u => u !== url).length;
                                 const percent = Math.min(100, Math.round(((loaded) / total) * 100));
                                 loadingText.textContent = `Загрузка: ${percent}%`;
                             },
@@ -219,7 +221,7 @@
                     
                     actions.idle.timeScale = 1.0;
                     actions.dance.timeScale = 1.0;
-                    actions.walk.timeScale = walkTimeScale; // Подгоняем ходьбу
+                    actions.walk.timeScale = walkTimeScale;
                     
                     actions.idle.play();
                     currentAction = actions.idle;
@@ -244,7 +246,7 @@
         }
         loadModels();
         
-        // --- Управление камерой (поворот мыши) ---
+        // --- Управление камерой ---
         document.addEventListener('mousemove', (e) => {
             if (!isPlaying) return;
             cameraAngleHorizontal -= e.movementX * 0.005;
@@ -252,7 +254,6 @@
             cameraAngleVertical = Math.max(0.1, Math.min(1.5, cameraAngleVertical));
         });
         
-        // --- ЗАХВАТ МЫШИ ПО КЛИКУ НА ЭКРАН ---
         renderer.domElement.addEventListener('click', () => {
             if (isPlaying) {
                 renderer.domElement.requestPointerLock();
@@ -267,7 +268,8 @@
         const jumpSpeed = 0.35;
         const groundY = 0;
         let isWalking = false;
-        let isDancingMode = false; // Включён ли режим танца
+        let isDancingMode = false;
+        let currentAnimName = 'idle';
         
         document.addEventListener('keydown', (e) => {
             if (!isPlaying) return;
@@ -299,14 +301,14 @@
         // --- МУЛЬТИПЛЕЕР (PeerJS) ---
         let peer = null;
         let conn = null;
-        let otherPlayers = {}; // Здесь храним чужие модели (клоны)
+        let otherPlayers = {};
         const FIXED_ROOM_ID = 'my-global-game-server-2026';
         
         async function startMultiplayer() {
             peer = new Peer(FIXED_ROOM_ID, { debug: 2 });
             
             peer.on('open', (id) => {
-                console.log('✅ Вы создали комнату! Ваш ID:', id);
+                console.log('✅ Вы создали комнату!');
                 document.getElementById('menu').style.display = 'none';
                 document.getElementById('ui').style.display = 'block';
                 isPlaying = true;
@@ -461,7 +463,7 @@
                     isWalking = false;
                 }
                 
-                // --- ГЛАВНАЯ ЛОГИКА ТАНЦА ---
+                // --- Логика танца ---
                 if (isWalking && isDancingMode) {
                     isDancingMode = false;
                 }
@@ -491,7 +493,7 @@
                     verticalVelocity = 0;
                 }
                 
-                // --- Камера (от 3 лица) ---
+                // --- Камера ---
                 const cameraOffset = new THREE.Vector3(
                     Math.sin(cameraAngleHorizontal) * Math.cos(cameraAngleVertical) * cameraDistance,
                     Math.sin(cameraAngleVertical) * cameraDistance + 0.5,
@@ -501,7 +503,7 @@
                 camera.position.copy(playerGroup.position.clone().add(cameraOffset));
                 camera.lookAt(playerGroup.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
                 
-                // --- Отправка состояния в сеть ---
+                // --- Отправка в сеть ---
                 if (conn) {
                     sendMyState();
                 }
@@ -510,7 +512,6 @@
                 if (mixer) {
                     mixer.update(delta);
                 }
-                // Обновляем анимации для всех удалённых игроков
                 Object.values(otherPlayers).forEach(remote => {
                     if (remote && remote.mixer) {
                         remote.mixer.update(delta);
