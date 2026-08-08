@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Multiplayer (Photon локально)</title>
+    <title>3D Multiplayer (Photon готов)</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
         #menu {
@@ -70,7 +70,7 @@
         <div class="sub">Загружаем модель и анимации...</div>
     </div>
 
-    <!-- ФАЙЛ ЛЕЖИТ ПРЯМО В ВАШЕМ РЕПОЗИТОРИИ -->
+    <!-- ФАЙЛ ЛЕЖИТ ПРЯМО В КОРНЕ ВАШЕГО РЕПОЗИТОРИЯ -->
     <script src="./photon.min.js"></script>
 
     <script type="importmap">
@@ -89,7 +89,6 @@
         // --- Проверка Photon ---
         if (typeof Photon === 'undefined') {
             console.error('❌ КРИТИЧЕСКАЯ ОШИБКА: Photon не загружен! Проверьте, что файл photon.min.js лежит в корне репозитория.');
-            alert('Photon не загружен! Загрузите photon.min.js в корень репозитория.');
         } else {
             console.log('✅ Photon загружен локально!');
         }
@@ -302,7 +301,7 @@
         });
         
         // =============================================================
-        // PHOTON МУЛЬТИПЛЕЕР
+        // PHOTON МУЛЬТИПЛЕЕР (международный)
         // =============================================================
         let loadBalancingClient = null;
         let otherPlayers = {};
@@ -312,7 +311,7 @@
 
         function initPhoton() {
             if (typeof Photon === 'undefined') {
-                alert('Ошибка! Не удалось загрузить photon.min.js. Проверьте, что файл есть в репозитории.');
+                alert('Ошибка! Не удалось загрузить photon.min.js. Убедитесь, что он лежит в корне.');
                 return;
             }
             
