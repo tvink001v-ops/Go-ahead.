@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Онлайн Игра (Photon Cloud)</title>
+    <title>3D Онлайн Игра (Photon на GitHub)</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
         #menu {
@@ -70,8 +70,8 @@
         <div class="sub">Загружаем модель и анимации...</div>
     </div>
 
-    <!-- ✅ БЕЗОПАСНАЯ ЗАГРУЗКА ЧЕРЕЗ САМЫЙ НАДЁЖНЫЙ CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/photon/1.0.0/photon.min.js"></script>
+    <!-- ⚡ ФАЙЛ ЗАГРУЖАЕТСЯ ИЗ ВАШЕГО РЕПОЗИТОРИЯ -->
+    <script src="./photon.js"></script>
 
     <script type="importmap">
         {
@@ -88,10 +88,9 @@
         
         // --- Проверка Photon ---
         if (typeof Photon === 'undefined') {
-            console.error('❌ Ошибка: Photon не загрузился через CDN. Проверьте интернет.');
-            alert('Ошибка загрузки Photon. Проверьте интернет-соединение.');
+            console.error('❌ Ошибка: Photon не загрузился из репозитория! Проверьте, что файл photon.js лежит рядом с index.html');
         } else {
-            console.log('✅ Photon загружен через CDN!');
+            console.log('✅ Photon загружен из репозитория!');
         }
 
         // --- Сцена, Камера, Рендерер ---
@@ -312,7 +311,7 @@
 
         function initPhoton() {
             if (typeof Photon === 'undefined') {
-                alert('Ошибка! Photon не загрузился. Проверьте интернет-соединение.');
+                alert('Ошибка! Photon не загрузился. Проверьте, что файл photon.js есть в репозитории.');
                 return;
             }
             
