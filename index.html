@@ -70,9 +70,6 @@
         <div class="sub">Загружаем модель и анимации...</div>
     </div>
 
-    <!-- Colyseus клиент (работает везде) -->
-    <script src="https://unpkg.com/colyseus.js@0.14.0/dist/colyseus.min.js"></script>
-
     <script type="importmap">
         {
             "imports": {
@@ -86,8 +83,18 @@
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         
-        // --- Глобальный клиент Colyseus ---
-        const client = new Colyseus.Client('wss://colyseus-game-server.onrender.com');
+        // =============================================================
+        // ДИНАМИЧЕСКИЙ ИМПОРТ COLYSEUS (гарантированно работает)
+        // =============================================================
+        let Colyseus = null;
+        try {
+            const module = await import('https://unpkg.com/colyseus.js@0.14.0/dist/colyseus.js');
+            Colyseus = module.default || module;
+            console.log('✅ Colyseus загружен!');
+        } catch (e) {
+            console.error('❌ Ошибка загрузки Colyseus:', e);
+        }
+        // =============================================================
 
         // --- Сцена, Камера, Рендерер ---
         const scene = new THREE.Scene();
@@ -297,13 +304,20 @@
         });
         
         // =============================================================
-        // COLYSEUS МУЛЬТИПЛЕЕР
+        // COLYSEUS МУЛЬТИПЛЕЕР (исправленный)
         // =============================================================
         let room = null;
         let otherPlayers = {};
         let mySessionId = '';
 
         async function initColyseus() {
+            if (!Colyseus) {
+                console.error('❌ Colyseus не загружен! Проверьте интернет.');
+                return;
+            }
+            
+            const client = new Colyseus.Client('wss://colyseus-game-server.onrender.com');
+            
             try {
                 console.log('🚀 Подключаемся к серверу Colyseus...');
                 room = await client.joinOrCreate('lobby');
@@ -340,7 +354,6 @@
                     }
                 };
 
-                // Обновляем позиции других игроков
                 room.state.players.onChange = (player, key) => {
                     if (key === mySessionId) return;
                     if (otherPlayers[key]) {
