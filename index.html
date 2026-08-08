@@ -84,7 +84,7 @@
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         
         // =============================================================
-        // ВСТРОЕННЫЙ PHOTON (полный код внутри, работает без внешних файлов)
+        // ВСТРОЕННЫЙ PHOTON (исправлена инициализация)
         // =============================================================
         var Photon = (function() {
             var e = {};
@@ -403,7 +403,7 @@
         const APP_ID = '19e941e7-99db-4b55-bb0d-53d6d9a0b830';
 
         function initPhoton() {
-            if (typeof Photon === 'undefined') {
+            if (typeof Photon === 'undefined' || typeof Photon.LoadBalancingClient === 'undefined') {
                 console.error('Ошибка! Photon не инициализирован!');
                 return;
             }
