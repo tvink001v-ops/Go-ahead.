@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Мультиплеер (Онлайн)</title>
+    <title>3D Мультиплеер (Supabase)</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
         #menu { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; z-index: 10; background: rgba(0,0,0,0.3); pointer-events: none; }
@@ -29,14 +29,23 @@
         }
     </script>
 
+    <!-- Подключаем Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
     <script type="module">
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
         // =============================================================
-        // ВАШ URL СЕРВЕРА
+        // НАСТРОЙКИ SUPABASE (ВАШИ ДАННЫЕ УЖЕ ВСТАВЛЕНЫ)
         // =============================================================
-        const SERVER_URL = 'wss://divine-heart-7248.tvink001v.workers.dev';
+        const SUPABASE_URL = 'https://lpmpmcplydwcfrqoqz.supabase.co';
+        const SUPABASE_ANON_KEY = 'sb_publishable_KwUiuCe8QEsYngu9bBD6GQ_nKXnBE3i';
+        
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        
+        // Генерируем уникальный ID для этого игрока
+        const myId = Math.random().toString(36).substring(2, 10);
 
         // =============================================================
         // СЦЕНА
@@ -190,81 +199,98 @@
         }
 
         // =============================================================
-        // ПОДКЛЮЧЕНИЕ К СЕРВЕРУ
+        // МУЛЬТИПЛЕЕР ЧЕРЕЗ SUPABASE (SQL)
         // =============================================================
-        let ws = null;
         let otherPlayers = {};
-        let myId = Math.random().toString(36).substring(2, 10);
+        let isConnected = false;
+        let updateInterval = null;
+
+        async function initMultiplayer() {
+            document.getElementById('status').style.display = 'block';
+            document.getElementById('status').textContent = '⏳ Регистрация...';
+            
+            try {
+                // Регистрируемся в БД (вставляем или обновляем)
+                await supabase.from('players').upsert({
+                    id: myId,
+                    x: 0, y: 0, z: 0, rot_y: 0,
+                    last_seen: new Date().toISOString()
+                });
+                
+                isConnected = true;
+                document.getElementById('status').textContent = '✅ Онлайн';
+                document.getElementById('menu').style.display = 'none';
+                document.getElementById('ui').style.display = 'block';
+                isPlaying = true;
+                
+                // Запускаем цикл обновления позиции (раз в 50 мс)
+                updateInterval = setInterval(syncLoop, 50);
+                
+            } catch (error) {
+                console.error('Ошибка подключения к Supabase:', error);
+                document.getElementById('status').textContent = '❌ Ошибка БД';
+            }
+        }
+
+        async function syncLoop() {
+            if (!isConnected || !isPlaying) return;
+            
+            // 1. Отправляем свою позицию в БД
+            await supabase.from('players').upsert({
+                id: myId,
+                x: playerGroup.position.x,
+                y: playerGroup.position.y,
+                z: playerGroup.position.z,
+                rot_y: playerGroup.rotation.y,
+                last_seen: new Date().toISOString()
+            });
+
+            // 2. Получаем всех активных игроков (за последние 2 секунды)
+            const twoSecondsAgo = new Date(Date.now() - 2000).toISOString();
+            const { data: players, error } = await supabase
+                .from('players')
+                .select('id, x, y, z, rot_y')
+                .gt('last_seen', twoSecondsAgo)
+                .neq('id', myId);
+
+            if (error) {
+                console.error('Ошибка получения игроков:', error);
+                return;
+            }
+
+            // 3. Синхронизируем модели
+            if (players) {
+                // Удаляем тех, кто вышел
+                for (const key in otherPlayers) {
+                    if (!players.find(p => p.id === key)) {
+                        scene.remove(otherPlayers[key]);
+                        delete otherPlayers[key];
+                    }
+                }
+                
+                // Добавляем/обновляем
+                for (const player of players) {
+                    if (!otherPlayers[player.id]) {
+                        const clone = createOtherPlayer();
+                        if (clone) {
+                            clone.position.set(player.x, player.y, player.z);
+                            clone.rotation.y = player.rot_y || 0;
+                            scene.add(clone);
+                            otherPlayers[player.id] = clone;
+                        }
+                    } else {
+                        otherPlayers[player.id].position.set(player.x, player.y, player.z);
+                        otherPlayers[player.id].rotation.y = player.rot_y || 0;
+                    }
+                }
+            }
+        }
 
         function createOtherPlayer() {
             if (!mainModel) return null;
             const clone = mainModel.clone();
             clone.scale.set(0.01, 0.01, 0.01);
             return clone;
-        }
-
-        function initMultiplayer() {
-            document.getElementById('status').style.display = 'block';
-            ws = new WebSocket(SERVER_URL);
-            
-            ws.onopen = () => {
-                console.log("✅ Подключено к серверу!");
-                document.getElementById('status').textContent = "✅ Онлайн";
-                document.getElementById('menu').style.display = 'none';
-                document.getElementById('ui').style.display = 'block';
-                isPlaying = true;
-                
-                // Сообщаем серверу, кто мы
-                ws.send(JSON.stringify({ type: 'init', id: myId }));
-                
-                // Периодическая отправка позиции
-                setInterval(() => {
-                    if (ws && ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({
-                            type: 'update',
-                            id: myId,
-                            x: playerGroup.position.x,
-                            y: playerGroup.position.y,
-                            z: playerGroup.position.z,
-                            rotY: playerGroup.rotation.y
-                        }));
-                    }
-                }, 100);
-            };
-            
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === 'players') {
-                    const players = data.data;
-                    
-                    // Удаляем тех, кто вышел
-                    for (const key in otherPlayers) {
-                        if (!players.find(p => p.id === key)) {
-                            scene.remove(otherPlayers[key]);
-                            delete otherPlayers[key];
-                        }
-                    }
-                    
-                    // Добавляем/обновляем
-                    for (const player of players) {
-                        if (player.id === myId) continue;
-                        if (!otherPlayers[player.id]) {
-                            const clone = createOtherPlayer();
-                            if (clone) {
-                                clone.position.set(player.x, player.y, player.z);
-                                clone.rotation.y = player.rotY;
-                                scene.add(clone);
-                                otherPlayers[player.id] = clone;
-                            }
-                        } else {
-                            otherPlayers[player.id].position.set(player.x, player.y, player.z);
-                            otherPlayers[player.id].rotation.y = player.rotY;
-                        }
-                    }
-                }
-            };
-            ws.onclose = () => { console.log('❌ Отключено'); };
-            ws.onerror = (e) => { console.error('❌ Ошибка:', e); };
         }
 
         document.getElementById('startBtn').addEventListener('click', initMultiplayer);
