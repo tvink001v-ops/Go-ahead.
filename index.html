@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Игра (Отладка Photon)</title>
+    <title>3D Игра (Photon Multiplayer)</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
         #menu {
@@ -75,7 +75,7 @@
             "imports": {
                 "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
                 "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
-                "photon": "https://unpkg.com/photon@1.0.0/dist/photon.min.js"
+                "photon": "https://cdn.jsdelivr.net/npm/photon@1.0.0/dist/photon.min.js"
             }
         }
     </script>
@@ -83,7 +83,6 @@
     <script type="module">
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
-        // ПРАВИЛЬНЫЙ ИМПОРТ PHOTON
         import { LoadBalancingClient, ConnectionProtocol } from 'photon';
         
         // --- Сцена, Камера, Рендерер ---
@@ -293,7 +292,7 @@
             }
         });
         
-        // --- МУЛЬТИПЛЕЕР (ОТЛАДКА) ---
+        // --- МУЛЬТИПЛЕЕР (Photon) ---
         let loadBalancingClient = null;
         let otherPlayers = {};
         let myActorNumber = 0;
@@ -301,33 +300,27 @@
         const APP_ID = "19e941e7-99db-4b55-bb0d-53d6d9a0b830";
 
         async function startMultiplayer() {
-            console.log('▶️ 1. Нажата кнопка, начинаем инициализацию Photon...');
+            console.log('▶️ Инициализация Photon...');
             
             try {
-                console.log('▶️ 2. Создаём LoadBalancingClient с APP_ID:', APP_ID);
-                
                 loadBalancingClient = new LoadBalancingClient(
                     ConnectionProtocol.Wss,
                     APP_ID,
-                    "wss://ns.photonengine.io", // Явный адрес сервера
-                    9090,                      // Порт WSS
+                    "wss://ns.photonengine.io",
+                    9090,
                     "1.0.0.0"
                 );
                 
-                console.log('▶️ 3. Клиент создан! Пытаемся подключиться...');
                 loadBalancingClient.connect();
-                console.log('▶️ 4. Команда connect() отправлена.');
 
-                // --- Обработчики событий ---
                 loadBalancingClient.on(LoadBalancingClient.EVENT_CONNECT, () => {
-                    console.log('✅ 5. Подключено к серверу Photon!');
-                    console.log('▶️ 6. Создаём комнату:', ROOM_NAME);
+                    console.log('✅ Подключено к серверу Photon!');
                     loadBalancingClient.opJoinOrCreateRoom(ROOM_NAME);
                 });
 
                 loadBalancingClient.on(LoadBalancingClient.EVENT_JOIN_ROOM, () => {
                     myActorNumber = loadBalancingClient.actorNumber;
-                    console.log(`✅ 7. Вошли в комнату! Ваш ActorNumber: ${myActorNumber}`);
+                    console.log(`✅ Вошли в комнату! Actor: ${myActorNumber}`);
                     
                     document.getElementById('menu').style.display = 'none';
                     document.getElementById('ui').style.display = 'block';
@@ -345,7 +338,6 @@
 
                 loadBalancingClient.on(LoadBalancingClient.EVENT_ERROR, (error) => {
                     console.error('❌ Ошибка Photon:', error);
-                    alert('Ошибка соединения! Смотрите консоль (F12).');
                 });
 
                 loadBalancingClient.on(LoadBalancingClient.EVENT_DISCONNECT, () => {
@@ -354,7 +346,6 @@
 
             } catch (error) {
                 console.error('❌ КРИТИЧЕСКАЯ ОШИБКА В БЛОКЕ TRY:', error);
-                alert('Критическая ошибка! Проверьте консоль (F12).');
             }
         }
 
@@ -397,7 +388,7 @@
         }
 
         document.getElementById('startBtn').addEventListener('click', () => {
-            console.clear(); // Очистить консоль перед запуском
+            console.clear();
             startMultiplayer();
         });
         
