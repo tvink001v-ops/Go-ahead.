@@ -6,7 +6,7 @@
     <title>3D Мультиплеер (Supabase)</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
-        #menu { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; z-index: 10; background: rgba(0,0,0,0.3); pointer-events: none; }
+        #menu { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; z-index: 10; background: rgba(0,0,0,0.5); pointer-events: none; }
         #startBtn { pointer-events: auto; padding: 20px 60px; font-size: 2rem; background: #4CAF50; color: white; border: none; border-radius: 10px; cursor: pointer; box-shadow: 0 0 30px rgba(76, 175, 80, 0.5); transition: transform 0.2s; }
         #startBtn:hover { transform: scale(1.1); }
         #ui { position: absolute; bottom: 20px; left: 20px; color: white; font-size: 1.2rem; text-shadow: 0 0 10px black; display: none; z-index: 5; }
@@ -39,7 +39,8 @@
         // ВАШИ ДАННЫЕ SUPABASE
         // =============================================================
         const SUPABASE_URL = 'https://lpmpmcplydwcfrqoqz.supabase.co';
-        const SUPABASE_ANON_KEY = 'sb_publishable_KwUiuCe8QEsYngu9bBD6GQ_nKXnBE3i';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxwbXBtY3BseWR3Y2ZycW9xeiIsInJvbGUiOiJhbm9uIiwiaWF0IjoxNzQzNjU3NzQ0LCJleHAiOjIwNTkyMzM3NDR9.vB5_VwqIZJ-F0YBFZqRgFyXnV4yY3sKXOqI2B6v6rLM';
+        // Замените ANON_KEY на ваш актуальный ключ из проекта Supabase
         
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         const myId = Math.random().toString(36).substring(2, 10);
@@ -116,34 +117,55 @@
                     'https://raw.githubusercontent.com/tvink001v-ops/Go-ahead./main/Silly%20Dancing.fbx'
                 ];
                 const [modelFbx, walkFbx, danceFbx] = await Promise.all([
-                    new Promise(r => fbxLoader.load(urls[0], r, undefined, () => r(null))),
-                    new Promise(r => fbxLoader.load(urls[1], r, undefined, () => r(null))),
-                    new Promise(r => fbxLoader.load(urls[2], r, undefined, () => r(null)))
+                    new Promise((resolve) => fbxLoader.load(urls[0], resolve, undefined, () => resolve(null))),
+                    new Promise((resolve) => fbxLoader.load(urls[1], resolve, undefined, () => resolve(null))),
+                    new Promise((resolve) => fbxLoader.load(urls[2], resolve, undefined, () => resolve(null)))
                 ]);
-                if (!modelFbx) return;
+                
+                if (!modelFbx) {
+                    console.error('Не удалось загрузить модель');
+                    loadingDiv.style.display = 'none';
+                    return;
+                }
+                
                 loadingText.textContent = '100%';
                 const scale = 0.01;
                 modelFbx.scale.set(scale, scale, scale);
+                
+                // Центрируем модель
                 const box = new THREE.Box3().setFromObject(modelFbx);
-                modelFbx.position.sub(box.getCenter(new THREE.Vector3()));
+                const center = box.getCenter(new THREE.Vector3());
+                modelFbx.position.sub(center);
                 modelFbx.position.y -= box.min.y * scale;
+                
                 mainModel = modelFbx;
+                
+                // Собираем анимации
                 const idleAnim = modelFbx.animations[0];
                 const walkAnim = walkFbx?.animations[0];
                 const danceAnim = danceFbx?.animations[0];
+                
                 if (idleAnim && walkAnim && danceAnim) {
                     mainModel.animations.push(walkAnim, danceAnim);
                     mixer = new THREE.AnimationMixer(mainModel);
                     actions.idle = mixer.clipAction(idleAnim);
                     actions.walk = mixer.clipAction(walkAnim);
                     actions.dance = mixer.clipAction(danceAnim);
+                    
+                    // Начинаем с idle
                     actions.idle.play();
                     currentAction = actions.idle;
+                } else {
+                    console.warn('Не все анимации загружены');
                 }
+                
                 playerGroup.add(mainModel);
                 modelsLoaded = true;
                 loadingDiv.style.display = 'none';
-            } catch (e) { console.error(e); }
+            } catch (e) { 
+                console.error('Ошибка загрузки моделей:', e);
+                loadingDiv.style.display = 'none';
+            }
         }
         loadModels();
         
@@ -163,6 +185,7 @@
             cameraAngleVertical -= e.movementY * 0.005;
             cameraAngleVertical = Math.max(0.1, Math.min(1.5, cameraAngleVertical));
         });
+        
         renderer.domElement.addEventListener('click', () => {
             if (isPlaying) renderer.domElement.requestPointerLock();
         });
@@ -175,9 +198,12 @@
                 case 'KeyS': keys.s = true; break;
                 case 'KeyD': keys.d = true; break;
                 case 'Space': e.preventDefault(); keys.space = true; break;
-                case 'KeyB': e.preventDefault(); if (!isWalking) isDancingMode = !isDancingMode; break;
+                case 'KeyB': e.preventDefault(); 
+                    if (!isWalking) isDancingMode = !isDancingMode; 
+                    break;
             }
         });
+        
         document.addEventListener('keyup', (e) => {
             if (!isPlaying) return;
             switch(e.code) {
@@ -190,7 +216,7 @@
         });
 
         function switchAnimation(newAction) {
-            if (currentAction === newAction) return;
+            if (!newAction || currentAction === newAction) return;
             if (currentAction) currentAction.fadeOut(0.1);
             newAction.reset().fadeIn(0.1).play();
             currentAction = newAction;
@@ -206,13 +232,21 @@
         function createOtherPlayer() {
             if (!mainModel) return null;
             const clone = mainModel.clone();
+            
+            // Масштабируем клон
             clone.scale.set(0.01, 0.01, 0.01);
+            
+            // Красим в красный цвет
             clone.traverse((child) => {
                 if (child.isMesh) {
-                    child.material = child.material.clone();
-                    child.material.color.setHex(0xcc3333);
+                    if (child.material) {
+                        const material = child.material.clone();
+                        material.color.setHex(0xcc3333);
+                        child.material = material;
+                    }
                 }
             });
+            
             return clone;
         }
 
@@ -221,25 +255,50 @@
             document.getElementById('status').textContent = '⏳ Регистрация...';
             
             try {
-                // Проверяем соединение
-                const test = await supabase.from('players').select('id').limit(1);
-                if (test.error) throw test.error;
+                // Проверяем соединение с таблицей
+                const { error: testError } = await supabase
+                    .from('players')
+                    .select('id')
+                    .limit(1);
+                
+                if (testError) {
+                    console.error('Ошибка доступа к таблице players:', testError);
+                    document.getElementById('status').textContent = '❌ Ошибка: создайте таблицу players';
+                    return;
+                }
 
-                await supabase.from('players').upsert({
-                    id: myId,
-                    name: myName,
-                    x: 0, y: 0, z: 0, rot_y: 0,
-                    last_seen: new Date().toISOString()
-                });
+                // Регистрируем игрока
+                const { error: upsertError } = await supabase
+                    .from('players')
+                    .upsert({
+                        id: myId,
+                        name: myName,
+                        x: 0, 
+                        y: 0, 
+                        z: 0, 
+                        rot_y: 0,
+                        last_seen: new Date().toISOString()
+                    });
+                
+                if (upsertError) {
+                    console.error('Ошибка регистрации:', upsertError);
+                    document.getElementById('status').textContent = '❌ Ошибка регистрации';
+                    return;
+                }
                 
                 // Красим себя в золотой
-                mainModel.traverse((child) => {
-                    if (child.isMesh) {
-                        child.material = child.material.clone();
-                        child.material.color.setHex(0xffaa00);
-                        child.material.emissive = new THREE.Color(0x442200);
-                    }
-                });
+                if (mainModel) {
+                    mainModel.traverse((child) => {
+                        if (child.isMesh) {
+                            if (child.material) {
+                                const material = child.material.clone();
+                                material.color.setHex(0xffaa00);
+                                material.emissive = new THREE.Color(0x442200);
+                                child.material = material;
+                            }
+                        }
+                    });
+                }
 
                 isConnected = true;
                 document.getElementById('status').textContent = '✅ Онлайн';
@@ -247,7 +306,8 @@
                 document.getElementById('ui').style.display = 'block';
                 isPlaying = true;
                 
-                updateInterval = setInterval(syncLoop, 100);
+                // Запускаем синхронизацию
+                updateInterval = setInterval(syncLoop, 200);
                 
             } catch (error) {
                 console.error('Ошибка подключения:', error);
@@ -256,58 +316,86 @@
         }
 
         async function syncLoop() {
-            if (!isConnected || !isPlaying) return;
+            if (!isConnected || !isPlaying || !modelsLoaded) return;
             
-            // 1. Отправляем свою позицию (с обработкой ошибок)
+            // 1. Отправляем свою позицию
             try {
-                await supabase.from('players').upsert({
-                    id: myId,
-                    name: myName,
-                    x: playerGroup.position.x,
-                    y: playerGroup.position.y,
-                    z: playerGroup.position.z,
-                    rot_y: playerGroup.rotation.y,
-                    last_seen: new Date().toISOString()
-                });
+                const { error: upsertError } = await supabase
+                    .from('players')
+                    .upsert({
+                        id: myId,
+                        name: myName,
+                        x: playerGroup.position.x,
+                        y: playerGroup.position.y,
+                        z: playerGroup.position.z,
+                        rot_y: playerGroup.rotation.y,
+                        last_seen: new Date().toISOString()
+                    });
+                
+                if (upsertError) {
+                    console.warn('Ошибка отправки позиции:', upsertError);
+                    return;
+                }
             } catch (e) {
-                // Просто пропускаем, если ошибка
+                console.warn('Ошибка отправки:', e);
                 return;
             }
 
             // 2. Получаем других игроков
-            let players = [];
             try {
-                const twoSecondsAgo = new Date(Date.now() - 3000).toISOString();
+                const twoSecondsAgo = new Date(Date.now() - 4000).toISOString();
                 const { data, error } = await supabase
                     .from('players')
                     .select('id, name, x, y, z, rot_y')
                     .gt('last_seen', twoSecondsAgo)
                     .neq('id', myId);
-                if (!error && data) players = data;
-            } catch (e) {
-                return;
-            }
+                
+                if (error) {
+                    console.warn('Ошибка получения игроков:', error);
+                    return;
+                }
+                
+                if (!data) return;
 
-            // 3. Синхронизируем
-            for (const key in otherPlayers) {
-                if (!players.find(p => p.id === key)) {
-                    scene.remove(otherPlayers[key]);
-                    delete otherPlayers[key];
-                }
-            }
-            for (const player of players) {
-                if (!otherPlayers[player.id]) {
-                    const clone = createOtherPlayer();
-                    if (clone) {
-                        clone.position.set(player.x, player.y, player.z);
-                        clone.rotation.y = player.rot_y || 0;
-                        scene.add(clone);
-                        otherPlayers[player.id] = clone;
+                // 3. Синхронизируем игроков
+                const currentIds = data.map(p => p.id);
+                
+                // Удаляем отсутствующих игроков
+                for (const key in otherPlayers) {
+                    if (!currentIds.includes(key)) {
+                        scene.remove(otherPlayers[key]);
+                        delete otherPlayers[key];
                     }
-                } else {
-                    otherPlayers[player.id].position.set(player.x, player.y, player.z);
-                    otherPlayers[player.id].rotation.y = player.rot_y || 0;
                 }
+                
+                // Добавляем или обновляем игроков
+                for (const playerData of data) {
+                    if (!otherPlayers[playerData.id]) {
+                        const clone = createOtherPlayer();
+                        if (clone) {
+                            clone.position.set(
+                                playerData.x || 0, 
+                                playerData.y || 0, 
+                                playerData.z || 0
+                            );
+                            clone.rotation.y = playerData.rot_y || 0;
+                            scene.add(clone);
+                            otherPlayers[playerData.id] = clone;
+                        }
+                    } else {
+                        const clone = otherPlayers[playerData.id];
+                        // Интерполяция позиции для плавности
+                        const targetPos = new THREE.Vector3(
+                            playerData.x || 0, 
+                            playerData.y || 0, 
+                            playerData.z || 0
+                        );
+                        clone.position.lerp(targetPos, 0.3);
+                        clone.rotation.y = playerData.rot_y || 0;
+                    }
+                }
+            } catch (e) {
+                console.warn('Ошибка синхронизации:', e);
             }
         }
 
@@ -323,37 +411,70 @@
             lastTime = now;
             
             if (isPlaying && modelsLoaded) {
-                const forward = new THREE.Vector3(-Math.sin(cameraAngleHorizontal), 0, -Math.cos(cameraAngleHorizontal));
-                const right = new THREE.Vector3(Math.cos(cameraAngleHorizontal), 0, -Math.sin(cameraAngleHorizontal));
+                const forward = new THREE.Vector3(
+                    -Math.sin(cameraAngleHorizontal), 
+                    0, 
+                    -Math.cos(cameraAngleHorizontal)
+                );
+                const right = new THREE.Vector3(
+                    Math.cos(cameraAngleHorizontal), 
+                    0, 
+                    -Math.sin(cameraAngleHorizontal)
+                );
                 const moveDirection = new THREE.Vector3(0, 0, 0);
+                
                 if (keys.w) moveDirection.add(forward);
                 if (keys.s) moveDirection.sub(forward);
                 if (keys.a) moveDirection.sub(right);
                 if (keys.d) moveDirection.add(right);
+                
                 if (moveDirection.length() > 0) {
                     moveDirection.normalize();
                     playerGroup.position.x += moveDirection.x * speed;
                     playerGroup.position.z += moveDirection.z * speed;
                     isWalking = true;
                     playerGroup.rotation.y = Math.atan2(moveDirection.x, moveDirection.z);
-                } else { isWalking = false; }
+                } else { 
+                    isWalking = false; 
+                }
+                
+                // Управление анимациями
                 if (isWalking && isDancingMode) isDancingMode = false;
-                if (isDancingMode && currentAction !== actions.dance) switchAnimation(actions.dance);
-                else if (isWalking && currentAction !== actions.walk) switchAnimation(actions.walk);
-                else if (!isWalking && currentAction !== actions.idle) switchAnimation(actions.idle);
-                if (keys.space && playerGroup.position.y <= groundY + 0.01) verticalVelocity = jumpSpeed;
+                
+                if (isDancingMode && actions.dance && currentAction !== actions.dance) {
+                    switchAnimation(actions.dance);
+                } else if (isWalking && actions.walk && currentAction !== actions.walk) {
+                    switchAnimation(actions.walk);
+                } else if (!isWalking && actions.idle && currentAction !== actions.idle) {
+                    switchAnimation(actions.idle);
+                }
+                
+                // Прыжок
+                if (keys.space && playerGroup.position.y <= groundY + 0.01) {
+                    verticalVelocity = jumpSpeed;
+                }
+                
                 verticalVelocity += gravity;
                 playerGroup.position.y += verticalVelocity;
-                if (playerGroup.position.y < groundY) { playerGroup.position.y = groundY; verticalVelocity = 0; }
+                
+                if (playerGroup.position.y < groundY) { 
+                    playerGroup.position.y = groundY; 
+                    verticalVelocity = 0; 
+                }
+                
+                // Камера
                 const cameraOffset = new THREE.Vector3(
                     Math.sin(cameraAngleHorizontal) * Math.cos(cameraAngleVertical) * cameraDistance,
                     Math.sin(cameraAngleVertical) * cameraDistance + 0.5,
                     Math.cos(cameraAngleHorizontal) * Math.cos(cameraAngleVertical) * cameraDistance
                 );
+                
                 camera.position.copy(playerGroup.position.clone().add(cameraOffset));
                 camera.lookAt(playerGroup.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
+                
                 if (mixer) mixer.update(delta);
             }
+            
             renderer.render(scene, camera);
         }
         animate();
