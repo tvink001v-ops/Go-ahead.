@@ -84,7 +84,7 @@
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
         // =============================================================
-        // ЗАГРУЗКА COLYSEUS ЧЕРЕЗ CDN (единственно верный способ)
+        // ЗАГРУЗКА COLYSEUS ЧЕРЕЗ CDN
         // =============================================================
         console.log('⏳ Загрузка Colyseus с CDN...');
         const Colyseus = await import('https://cdnjs.cloudflare.com/ajax/libs/colyseus.js/0.14.0/colyseus.min.js')
@@ -95,11 +95,10 @@
             });
         
         if (Colyseus) {
-            console.log('✅ Colyseus загружен! (версия с CDN)');
+            console.log('✅ Colyseus загружен!');
         } else {
             console.error('❌ Colyseus не загрузился!');
         }
-        // =============================================================
 
         // --- Сцена, Камера, Рендерер ---
         const scene = new THREE.Scene();
@@ -160,13 +159,11 @@
         let currentAction = null;
         let lastTime = performance.now() / 1000;
         
-        // Словарь с анимациями
         const actions = {};
         let modelsLoaded = false;
         const loadingDiv = document.getElementById('loading');
         const loadingText = document.getElementById('loadingText');
         
-        // --- НАСТРОЙКИ БАЛАНСА ---
         const speed = 0.07;
         const walkTimeScale = 1.4;
         
@@ -203,7 +200,6 @@
                 loadingText.textContent = 'Загрузка: 100%';
                 
                 const scale = 0.01;
-                
                 modelFbx.scale.set(scale, scale, scale);
                 const modelBox = new THREE.Box3().setFromObject(modelFbx);
                 const modelCenter = modelBox.getCenter(new THREE.Vector3());
@@ -309,28 +305,30 @@
         });
         
         // =============================================================
-        // COLYSEUS МУЛЬТИПЛЕЕР (ФИНАЛЬНАЯ ВЕРСИЯ)
+        // COLYSEUS МУЛЬТИПЛЕЕР (ИСПРАВЛЕННЫЙ)
         // =============================================================
         let room = null;
         let otherPlayers = {};
         let mySessionId = '';
+        let isConnected = false;
 
         async function initColyseus() {
             if (!Colyseus) {
-                console.error('❌ Colyseus не загружен! Проверьте интернет.');
+                console.error('❌ Colyseus не загружен!');
                 return;
             }
             
             try {
-                // ✅ ПРАВИЛЬНЫЙ КОНСТРУКТОР
-                const client = new Colyseus.Client('wss://colyseus-game-server.onrender.com');
+                // ✅ ИСПОЛЬЗУЕМ ТЕСТОВЫЙ СЕРВЕР COLYSEUS
+                const client = new Colyseus.Client('wss://localhost:2567');
+                // Или используйте свой сервер: 'wss://ваш-сервер.onrender.com'
                 
                 console.log('🚀 Подключаемся к серверу Colyseus...');
                 room = await client.joinOrCreate('lobby');
                 mySessionId = room.sessionId;
                 console.log(`✅ Подключено! Ваш ID: ${mySessionId}`);
                 
-                // Отправляем свои данные при входе
+                // ✅ ПРАВИЛЬНАЯ ОТПРАВКА ДАННЫХ
                 room.send('updatePlayer', {
                     x: playerGroup.position.x,
                     y: playerGroup.position.y,
@@ -339,53 +337,70 @@
                     anim: 'idle'
                 });
 
-                room.state.players.onAdd = (player, key) => {
-                    console.log('👥 Игрок подключился:', key);
-                    if (key === mySessionId) return;
-                    if (!mainModel) return;
+                // ✅ СЛУШАЕМ СООБЩЕНИЯ ОТ СЕРВЕРА
+                room.onMessage('players', (players) => {
+                    // Удаляем старых игроков
+                    for (const key in otherPlayers) {
+                        if (!players[key]) {
+                            scene.remove(otherPlayers[key]);
+                            delete otherPlayers[key];
+                        }
+                    }
                     
-                    const clone = mainModel.clone();
-                    clone.scale.set(0.01, 0.01, 0.01);
-                    clone.position.set(player.x, player.y + 0.2, player.z);
-                    clone.rotation.y = player.rotY;
-                    scene.add(clone);
-                    otherPlayers[key] = clone;
-                };
+                    // Добавляем/обновляем игроков
+                    for (const key in players) {
+                        if (key === mySessionId) continue;
+                        
+                        const data = players[key];
+                        if (!otherPlayers[key]) {
+                            // Создаем нового игрока
+                            if (!mainModel) continue;
+                            const clone = mainModel.clone();
+                            clone.scale.set(0.01, 0.01, 0.01);
+                            clone.position.set(data.x, data.y + 0.2, data.z);
+                            clone.rotation.y = data.rotY;
+                            scene.add(clone);
+                            otherPlayers[key] = clone;
+                        } else {
+                            // Обновляем позицию
+                            otherPlayers[key].position.set(data.x, data.y, data.z);
+                            otherPlayers[key].rotation.y = data.rotY;
+                        }
+                    }
+                });
 
-                room.state.players.onRemove = (player, key) => {
-                    console.log('👋 Игрок отключился:', key);
+                // ✅ СЛУШАЕМ ОТКЛЮЧЕНИЕ ИГРОКОВ
+                room.onMessage('playerLeft', (key) => {
                     if (otherPlayers[key]) {
                         scene.remove(otherPlayers[key]);
                         delete otherPlayers[key];
                     }
-                };
+                });
 
-                room.state.players.onChange = (player, key) => {
-                    if (key === mySessionId) return;
-                    if (otherPlayers[key]) {
-                        otherPlayers[key].position.set(player.x, player.y, player.z);
-                        otherPlayers[key].rotation.y = player.rotY;
-                    }
-                };
-                
+                isConnected = true;
                 document.getElementById('menu').style.display = 'none';
                 document.getElementById('ui').style.display = 'block';
                 isPlaying = true;
                 
+                // Периодическая отправка позиции
+                setInterval(() => {
+                    if (room && isPlaying) {
+                        room.send('updatePlayer', {
+                            x: playerGroup.position.x,
+                            y: playerGroup.position.y,
+                            z: playerGroup.position.z,
+                            rotY: playerGroup.rotation.y,
+                            anim: isDancingMode ? 'dance' : (isWalking ? 'walk' : 'idle')
+                        });
+                    }
+                }, 100);
+                
             } catch (error) {
                 console.error('❌ Ошибка подключения к Colyseus:', error);
-            }
-        }
-
-        function sendMyState() {
-            if (room) {
-                room.send('updatePlayer', {
-                    x: playerGroup.position.x,
-                    y: playerGroup.position.y,
-                    z: playerGroup.position.z,
-                    rotY: playerGroup.rotation.y,
-                    anim: isDancingMode ? 'dance' : (isWalking ? 'walk' : 'idle')
-                });
+                // Продолжаем игру без мультиплеера
+                document.getElementById('menu').style.display = 'none';
+                document.getElementById('ui').style.display = 'block';
+                isPlaying = true;
             }
         }
 
@@ -457,10 +472,6 @@
                 
                 camera.position.copy(playerGroup.position.clone().add(cameraOffset));
                 camera.lookAt(playerGroup.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
-                
-                if (room) {
-                    sendMyState();
-                }
                 
                 if (mixer) {
                     mixer.update(delta);
