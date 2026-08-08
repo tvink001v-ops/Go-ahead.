@@ -37,15 +37,16 @@
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
         // =============================================================
-        // НАСТРОЙКИ SUPABASE (ВАШИ ДАННЫЕ УЖЕ ВСТАВЛЕНЫ)
+        // НАСТРОЙКИ SUPABASE
         // =============================================================
         const SUPABASE_URL = 'https://lpmpmcplydwcfrqoqz.supabase.co';
         const SUPABASE_ANON_KEY = 'sb_publishable_KwUiuCe8QEsYngu9bBD6GQ_nKXnBE3i';
         
         const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
         
-        // Генерируем уникальный ID для этого игрока
+        // Генерируем уникальный ID и имя
         const myId = Math.random().toString(36).substring(2, 10);
+        const myName = "Я"; // Или можете заменить на prompt("Введите ваш ник:")
 
         // =============================================================
         // СЦЕНА
@@ -205,6 +206,54 @@
         let isConnected = false;
         let updateInterval = null;
 
+        // Функция создания спрайта (ника) над головой
+        function createNameTag(name, isMainPlayer = false) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 256;
+            canvas.height = 64;
+            
+            // Фон
+            ctx.fillStyle = isMainPlayer ? 'rgba(255, 215, 0, 0.8)' : 'rgba(0, 0, 0, 0.6)';
+            ctx.roundRect(10, 10, canvas.width - 20, canvas.height - 20, 20);
+            ctx.fill();
+            
+            // Текст
+            ctx.fillStyle = isMainPlayer ? '#000' : '#fff';
+            ctx.font = 'bold 36px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(name, canvas.width / 2, canvas.height / 2);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const material = new THREE.SpriteMaterial({ map: texture, depthTest: false });
+            const sprite = new THREE.Sprite(material);
+            sprite.scale.set(1.5, 0.4, 1);
+            return sprite;
+        }
+
+        // Создаём клона игрока
+        function createOtherPlayer(id, name) {
+            if (!mainModel) return null;
+            const clone = mainModel.clone();
+            clone.scale.set(0.01, 0.01, 0.01);
+            
+            // Красим других игроков в красный оттенок
+            clone.traverse((child) => {
+                if (child.isMesh) {
+                    child.material = child.material.clone();
+                    child.material.color.setHex(0xcc4444); // Красноватый
+                }
+            });
+            
+            // Добавляем ник
+            const nameTag = createNameTag(name, false);
+            nameTag.position.y = 1.8; // Над головой
+            clone.add(nameTag);
+            
+            return clone;
+        }
+
         async function initMultiplayer() {
             document.getElementById('status').style.display = 'block';
             document.getElementById('status').textContent = '⏳ Регистрация...';
@@ -213,9 +262,25 @@
                 // Регистрируемся в БД (вставляем или обновляем)
                 await supabase.from('players').upsert({
                     id: myId,
+                    name: myName,
                     x: 0, y: 0, z: 0, rot_y: 0,
                     last_seen: new Date().toISOString()
                 });
+                
+                // Красим своего игрока в золотой
+                if (mainModel) {
+                    mainModel.traverse((child) => {
+                        if (child.isMesh) {
+                            child.material = child.material.clone();
+                            child.material.color.setHex(0xffaa00); // Золотой
+                            child.material.emissive = new THREE.Color(0x442200);
+                        }
+                    });
+                    // Добавляем свой ник
+                    const myNameTag = createNameTag(myName, true);
+                    myNameTag.position.y = 1.8;
+                    playerGroup.add(myNameTag);
+                }
                 
                 isConnected = true;
                 document.getElementById('status').textContent = '✅ Онлайн';
@@ -238,6 +303,7 @@
             // 1. Отправляем свою позицию в БД
             await supabase.from('players').upsert({
                 id: myId,
+                name: myName,
                 x: playerGroup.position.x,
                 y: playerGroup.position.y,
                 z: playerGroup.position.z,
@@ -249,7 +315,7 @@
             const twoSecondsAgo = new Date(Date.now() - 2000).toISOString();
             const { data: players, error } = await supabase
                 .from('players')
-                .select('id, x, y, z, rot_y')
+                .select('id, name, x, y, z, rot_y')
                 .gt('last_seen', twoSecondsAgo)
                 .neq('id', myId);
 
@@ -271,7 +337,7 @@
                 // Добавляем/обновляем
                 for (const player of players) {
                     if (!otherPlayers[player.id]) {
-                        const clone = createOtherPlayer();
+                        const clone = createOtherPlayer(player.id, player.name || 'Игрок');
                         if (clone) {
                             clone.position.set(player.x, player.y, player.z);
                             clone.rotation.y = player.rot_y || 0;
@@ -284,13 +350,6 @@
                     }
                 }
             }
-        }
-
-        function createOtherPlayer() {
-            if (!mainModel) return null;
-            const clone = mainModel.clone();
-            clone.scale.set(0.01, 0.01, 0.01);
-            return clone;
         }
 
         document.getElementById('startBtn').addEventListener('click', initMultiplayer);
