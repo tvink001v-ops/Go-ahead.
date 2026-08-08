@@ -79,12 +79,26 @@
         }
     </script>
 
-    <!-- Photon SDK через CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/photon-js-sdk@4.1.1/dist/photon.min.js"></script>
-
     <script type="module">
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+
+        // =============================================================
+        // ЗАГРУЗКА PHOTON ЧЕРЕЗ CDN (динамический импорт)
+        // =============================================================
+        console.log('⏳ Загрузка Photon с CDN...');
+        const Photon = await import('https://cdn.jsdelivr.net/npm/photon-js-sdk@4.1.1/dist/photon.esm.js')
+            .then(m => m.default || m)
+            .catch(e => {
+                console.error('❌ Ошибка загрузки Photon:', e);
+                return null;
+            });
+        
+        if (Photon) {
+            console.log('✅ Photon загружен!');
+        } else {
+            console.error('❌ Photon не загрузился!');
+        }
 
         // =============================================================
         // НАСТРОЙКИ PHOTON
@@ -296,7 +310,7 @@
         });
         
         // =============================================================
-        // PHOTON МУЛЬТИПЛЕЕР (ИСПРАВЛЕННЫЙ)
+        // PHOTON МУЛЬТИПЛЕЕР
         // =============================================================
         let photon = null;
         let otherPlayers = {};
@@ -311,6 +325,11 @@
         }
 
         function initPhoton() {
+            if (!Photon) {
+                console.error('❌ Photon не загружен! Проверьте интернет.');
+                return;
+            }
+            
             // Инициализация Photon
             photon = new Photon.LoadBalancing.LoadBalancingClient(
                 PHOTON_APP_ID, 
