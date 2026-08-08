@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Игра (Mixamo + Танцы)</title>
+    <title>3D Игра (Ваш код + Мультиплеер)</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
         #menu {
@@ -78,7 +78,8 @@
         {
             "imports": {
                 "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "peerjs": "https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"
             }
         }
     </script>
@@ -86,6 +87,7 @@
     <script type="module">
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+        import { Peer } from 'peerjs'; // ПРАВИЛЬНЫЙ ИМПОРТ
         
         // --- Сцена, Камера, Рендерер ---
         const scene = new THREE.Scene();
@@ -172,7 +174,6 @@
                             (xhr) => {
                                 const total = urls.length;
                                 const loaded = urls.filter(u => u !== url).length; // приблизительно
-                                // Просто показываем общий прогресс, так как Three.js не даёт точного процента для одного файла
                                 const percent = Math.min(100, Math.round(((loaded) / total) * 100));
                                 loadingText.textContent = `Загрузка: ${percent}%`;
                             },
@@ -181,14 +182,12 @@
                     });
                 };
                 
-                // Загружаем все 3 файла параллельно
                 const [modelFbx, walkFbx, danceFbx] = await Promise.all([
                     loadWithProgress(urls[0]),
                     loadWithProgress(urls[1]),
                     loadWithProgress(urls[2])
                 ]);
                 
-                // Ставим 100%, когда всё загружено
                 loadingText.textContent = 'Загрузка: 100%';
                 
                 const scale = 0.01;
@@ -250,7 +249,6 @@
             if (!isPlaying) return;
             cameraAngleHorizontal -= e.movementX * 0.005;
             cameraAngleVertical -= e.movementY * 0.005;
-            // Ограничиваем, чтобы камера не уходила под землю или в небо
             cameraAngleVertical = Math.max(0.1, Math.min(1.5, cameraAngleVertical));
         });
         
@@ -281,7 +279,6 @@
                 case 'Space': e.preventDefault(); keys.space = true; break;
                 case 'KeyB': 
                     e.preventDefault(); 
-                    // Переключаем режим танца (если не идём)
                     if (!isWalking) {
                         isDancingMode = !isDancingMode;
                     }
@@ -299,11 +296,131 @@
             }
         });
         
+        // --- МУЛЬТИПЛЕЕР (PeerJS) ---
+        let peer = null;
+        let conn = null;
+        let otherPlayers = {}; // Здесь храним чужие модели (клоны)
+        const FIXED_ROOM_ID = 'my-global-game-server-2026';
+        
+        async function startMultiplayer() {
+            peer = new Peer(FIXED_ROOM_ID, { debug: 2 });
+            
+            peer.on('open', (id) => {
+                console.log('✅ Вы создали комнату! Ваш ID:', id);
+                document.getElementById('menu').style.display = 'none';
+                document.getElementById('ui').style.display = 'block';
+                isPlaying = true;
+            });
+            
+            peer.on('error', (err) => {
+                if (err.type === 'unavailable-id') {
+                    console.log('🔄 Подключаемся к существующей комнате...');
+                    connectToHost(FIXED_ROOM_ID);
+                }
+            });
+            
+            peer.on('connection', (newConn) => {
+                newConn.on('open', () => {
+                    if (!conn) {
+                        conn = newConn;
+                        console.log('👥 Игрок подключился!');
+                        const remotePlayer = createRemotePlayer();
+                        otherPlayers[newConn.peer] = remotePlayer;
+                        sendMyState();
+                        
+                        conn.on('data', (data) => {
+                            if (data.type === 'move') {
+                                updateOtherPlayer(data);
+                            }
+                        });
+                    }
+                });
+            });
+        }
+
+        function connectToHost(hostId) {
+            const newConn = peer.connect(hostId, { reliable: true });
+            
+            newConn.on('open', () => {
+                conn = newConn;
+                console.log('✅ Подключено к комнате!');
+                document.getElementById('menu').style.display = 'none';
+                document.getElementById('ui').style.display = 'block';
+                isPlaying = true;
+                
+                conn.on('data', (data) => {
+                    if (data.type === 'move') {
+                        updateOtherPlayer(data);
+                    }
+                });
+            });
+        }
+        
+        function createRemotePlayer() {
+            if (!mainModel) return null;
+            const clone = mainModel.clone();
+            clone.scale.set(0.01, 0.01, 0.01);
+            clone.position.set(0, 0.2, 0);
+            const remoteMixer = new THREE.AnimationMixer(clone);
+            const remoteIdle = remoteMixer.clipAction(actions.idle.getClip());
+            const remoteWalk = remoteMixer.clipAction(actions.walk.getClip());
+            const remoteDance = remoteMixer.clipAction(actions.dance.getClip());
+            remoteIdle.play();
+            remoteWalk.play();
+            remoteDance.play();
+            remoteIdle.setEffectiveWeight(1);
+            remoteWalk.setEffectiveWeight(0);
+            remoteDance.setEffectiveWeight(0);
+            
+            scene.add(clone);
+            return {
+                model: clone,
+                mixer: remoteMixer,
+                idle: remoteIdle,
+                walk: remoteWalk,
+                dance: remoteDance,
+                currentRemoteAnim: remoteIdle
+            };
+        }
+
+        function updateOtherPlayer(data) {
+            if (otherPlayers[data.id]) {
+                const remote = otherPlayers[data.id];
+                remote.model.position.set(data.x, data.y, data.z);
+                remote.model.rotation.y = data.rotY;
+                
+                let newAction = null;
+                if (data.anim === 'idle') newAction = remote.idle;
+                else if (data.anim === 'walk') newAction = remote.walk;
+                else if (data.anim === 'dance') newAction = remote.dance;
+                
+                if (newAction && remote.currentRemoteAnim !== newAction) {
+                    remote.currentRemoteAnim.setEffectiveWeight(0);
+                    newAction.setEffectiveWeight(1);
+                    newAction.reset();
+                    newAction.play();
+                    remote.currentRemoteAnim = newAction;
+                }
+            }
+        }
+
+        function sendMyState() {
+            if (conn) {
+                conn.send({
+                    type: 'move',
+                    id: peer.id,
+                    x: playerGroup.position.x,
+                    y: playerGroup.position.y,
+                    z: playerGroup.position.z,
+                    rotY: playerGroup.rotation.y,
+                    anim: isDancingMode ? 'dance' : (isWalking ? 'walk' : 'idle')
+                });
+            }
+        }
+        
+        // --- Кнопка ВОЙТИ В ИГРУ ---
         document.getElementById('startBtn').addEventListener('click', () => {
-            document.getElementById('menu').style.display = 'none';
-            document.getElementById('ui').style.display = 'block';
-            isPlaying = true;
-            // Захват мыши ЗДЕСЬ НЕ ВКЛЮЧАЕМ — только по клику на экран!
+            startMultiplayer();
         });
         
         // --- Плавное переключение анимаций ---
@@ -345,24 +462,19 @@
                 }
                 
                 // --- ГЛАВНАЯ ЛОГИКА ТАНЦА ---
-                // 1. Если игрок начал ходить — танец принудительно выключается
                 if (isWalking && isDancingMode) {
                     isDancingMode = false;
                 }
                 
-                // 2. Выбор анимации
                 if (isDancingMode) {
-                    // Режим танца включён и мы не идём
                     if (currentAction !== actions.dance) {
                         switchAnimation(actions.dance);
                     }
                 } else if (isWalking) {
-                    // Обычная ходьба
                     if (currentAction !== actions.walk) {
                         switchAnimation(actions.walk);
                     }
                 } else {
-                    // Покой (Idle)
                     if (currentAction !== actions.idle) {
                         switchAnimation(actions.idle);
                     }
@@ -389,10 +501,21 @@
                 camera.position.copy(playerGroup.position.clone().add(cameraOffset));
                 camera.lookAt(playerGroup.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
                 
+                // --- Отправка состояния в сеть ---
+                if (conn) {
+                    sendMyState();
+                }
+                
                 // --- Обновление анимаций ---
                 if (mixer) {
                     mixer.update(delta);
                 }
+                // Обновляем анимации для всех удалённых игроков
+                Object.values(otherPlayers).forEach(remote => {
+                    if (remote && remote.mixer) {
+                        remote.mixer.update(delta);
+                    }
+                });
             }
             
             renderer.render(scene, camera);
