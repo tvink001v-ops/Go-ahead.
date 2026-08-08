@@ -3,9 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Игра (Кинематографичное меню)</title>
+    <title>3D Игра (Строгая загрузка)</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; background: #000; }
+        /* Полупрозрачный чёрный слой загрузки */
+        #loadingOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            color: white;
+            transition: opacity 0.5s ease;
+        }
+        #loadingOverlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+        #loadingBarContainer {
+            width: 300px;
+            height: 6px;
+            background: #333;
+            border-radius: 10px;
+            margin-top: 20px;
+            overflow: hidden;
+        }
+        #loadingBar {
+            width: 0%;
+            height: 100%;
+            background: #4CAF50;
+            border-radius: 10px;
+            transition: width 0.2s;
+        }
+        #loadingText {
+            font-size: 1.5rem;
+            font-weight: bold;
+            text-shadow: 0 0 10px black;
+        }
+        #loadingSub {
+            font-size: 1rem;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+        #loadingError {
+            color: #ff4444;
+            font-size: 1rem;
+            margin-top: 15px;
+            display: none;
+        }
+        
+        /* Меню (появляется только после загрузки) */
         #menu {
             position: absolute;
             top: 0;
@@ -18,6 +71,12 @@
             z-index: 10;
             pointer-events: none;
             background: transparent;
+            opacity: 0;
+            transition: opacity 0.8s ease;
+        }
+        #menu.visible {
+            opacity: 1;
+            pointer-events: auto;
         }
         #menu > * { pointer-events: auto; }
         .btn {
@@ -34,8 +93,14 @@
             letter-spacing: 2px;
             backdrop-filter: blur(4px);
             text-shadow: 0 0 20px rgba(0,0,0,0.5);
+            opacity: 0.5;
+            pointer-events: none;
         }
-        .btn:hover { 
+        .btn.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .btn.active:hover { 
             transform: scale(1.1);
             background: rgba(56, 142, 60, 0.95);
             box-shadow: 0 0 80px rgba(76, 175, 80, 0.6);
@@ -51,32 +116,27 @@
             display: none;
             z-index: 5;
         }
-        #loading {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            font-size: 2rem;
-            text-shadow: 0 0 20px black;
-            z-index: 20;
-            display: none;
-            text-align: center;
-        }
-        #loading .sub { font-size: 1.2rem; margin-top: 10px; opacity: 0.8; }
     </style>
 </head>
 <body>
+    <!-- ЧЁРНЫЙ СЛОЙ ЗАГРУЗКИ -->
+    <div id="loadingOverlay">
+        <div id="loadingText">Загрузка моделей...</div>
+        <div id="loadingSub">Idle / Walking / Dance</div>
+        <div id="loadingBarContainer">
+            <div id="loadingBar"></div>
+        </div>
+        <div id="loadingError"></div>
+    </div>
+
+    <!-- МЕНЮ (появляется после 100% загрузки) -->
     <div id="menu">
         <button id="startBtn" class="btn">ВОЙТИ В ИГРУ</button>
     </div>
+
     <div id="ui">
         <div>WASD — ходьба | Пробел — прыжок | B — танец</div>
         <div>Клик по экрану — захват мыши</div>
-    </div>
-    <div id="loading">
-        <div id="loadingText">Загрузка: 0%</div>
-        <div class="sub">Загружаем модель и анимации...</div>
     </div>
 
     <script type="importmap">
@@ -94,13 +154,38 @@
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         import Peer from 'peerjs';
         
+        // --- DOM элементы ---
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const loadingText = document.getElementById('loadingText');
+        const loadingSub = document.getElementById('loadingSub');
+        const loadingBar = document.getElementById('loadingBar');
+        const loadingError = document.getElementById('loadingError');
+        const menu = document.getElementById('menu');
+        const startBtn = document.getElementById('startBtn');
+        const ui = document.getElementById('ui');
+
+        // --- Обновление прогресса ---
+        function updateProgress(percent, text) {
+            loadingBar.style.width = Math.min(100, percent) + '%';
+            if (text) loadingText.textContent = text;
+        }
+
+        // --- Показ ошибки (загрузка не снимется) ---
+        function showError(message) {
+            loadingText.textContent = '❌ ОШИБКА ЗАГРУЗКИ';
+            loadingText.style.color = '#ff4444';
+            loadingError.textContent = message;
+            loadingError.style.display = 'block';
+            loadingSub.textContent = 'Проверьте консоль (F12)';
+            console.error('❌ КРИТИЧЕСКАЯ ОШИБКА:', message);
+        }
+
         // --- Сцена, Камера, Рендерер ---
         const scene = new THREE.Scene();
-        const skyTexture = new THREE.TextureLoader().load('https://raw.githubusercontent.com/tvink001v-ops/Go-ahead./main/57403fb0a6c9c154d2f8ca2b.jpg');
-        scene.background = skyTexture;
+        scene.background = new THREE.Color(0x87CEEB); // Небо
         
         const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 8, 20); // Начальная позиция для облёта
+        camera.position.set(0, 8, 20);
         
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -119,41 +204,33 @@
         dirLight.shadow.mapSize.height = 2048;
         scene.add(dirLight);
         
-        // Дополнительный свет для подсветки карты
-        const fillLight = new THREE.DirectionalLight(0x88aaff, 0.3);
-        fillLight.position.set(-10, 10, -10);
-        scene.add(fillLight);
+        // --- Бесконечная земля ---
+        const groundTexture = new THREE.TextureLoader().load('https://raw.githubusercontent.com/tvink001v-ops/Go-ahead./main/1642522213_3-abrakadabra-fun-p-tekstura-travi-dlya-genplana-8.jpg');
+        groundTexture.wrapS = THREE.RepeatWrapping;
+        groundTexture.wrapT = THREE.RepeatWrapping;
+        groundTexture.repeat.set(400, 400);
         
-        // --- Бесконечная земля (сделаем её чуть больше для обзора) ---
-        function createGround() {
-            const texture = new THREE.TextureLoader().load('https://raw.githubusercontent.com/tvink001v-ops/Go-ahead./main/1642522213_3-abrakadabra-fun-p-tekstura-travi-dlya-genplana-8.jpg');
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(400, 400);
-            
-            const geometry = new THREE.PlaneGeometry(2000, 2000);
-            const material = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.8 });
-            const ground = new THREE.Mesh(geometry, material);
-            ground.rotation.x = -Math.PI / 2;
-            ground.position.y = 0;
-            ground.receiveShadow = true;
-            return ground;
-        }
-        scene.add(createGround());
+        const groundGeometry = new THREE.PlaneGeometry(2000, 2000);
+        const groundMaterial = new THREE.MeshStandardMaterial({ map: groundTexture, roughness: 0.8 });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = 0;
+        ground.receiveShadow = true;
+        scene.add(ground);
         
-        // --- Группа игрока (своя) ---
+        // --- Группа игрока ---
         const playerGroup = new THREE.Group();
         playerGroup.position.set(0, 0, 0);
         scene.add(playerGroup);
 
-        // --- Переменные камеры (для игры) ---
+        // --- Переменные камеры ---
         let cameraAngleHorizontal = 0;
         let cameraAngleVertical = 0.5;
         let cameraDistance = 5;
         let isPlaying = false;
         let menuFlyTime = 0;
         
-        // --- Загрузка FBX ---
+        // --- Загрузка FBX (ТОЛЬКО ВАШИ МОДЕЛИ) ---
         const fbxLoader = new FBXLoader();
         let mainModel = null;
         let mixer = null;
@@ -161,28 +238,42 @@
         let lastTime = performance.now() / 1000;
         const actions = {};
         let modelsLoaded = false;
-        const loadingDiv = document.getElementById('loading');
-        const loadingText = document.getElementById('loadingText');
-        
-        const speed = 0.07;
-        const walkTimeScale = 1.4;
-        
+        let loadError = false;
+
         async function loadModels() {
-            loadingDiv.style.display = 'block';
             try {
-                const urls = [
-                    'https://raw.githubusercontent.com/tvink001v-ops/Go-ahead./500fc0429e62f2cd0267d381c944c66ae5342034/Idle%20(1).fbx',
-                    'https://raw.githubusercontent.com/tvink001v-ops/Go-ahead./3e271cedf51ef1d55cb50aa7be37fabc611dec37/Walking.fbx',
-                    'https://raw.githubusercontent.com/tvink001v-ops/Go-ahead./main/Silly%20Dancing.fbx'
-                ];
+                // ССЫЛКИ НА ВАШИ МОДЕЛИ
+                const modelUrl = 'https://raw.githubusercontent.com/tvink001v-ops/Go-ahead./500fc0429e62f2cd0267d381c944c66ae5342034/Idle%20(1).fbx';
+                const walkUrl = 'https://raw.githubusercontent.com/tvink001v-ops/Go-ahead./3e271cedf51ef1d55cb50aa7be37fabc611dec37/Walking.fbx';
+                const danceUrl = 'https://raw.githubusercontent.com/tvink001v-ops/Go-ahead./main/Silly%20Dancing.fbx';
                 
-                const [modelFbx, walkFbx, danceFbx] = await Promise.all([
-                    fbxLoader.loadAsync(urls[0]),
-                    fbxLoader.loadAsync(urls[1]),
-                    fbxLoader.loadAsync(urls[2])
-                ]);
+                console.log('🚀 Начинаем загрузку моделей...');
+                updateProgress(10, 'Загрузка Idle...');
                 
-                loadingText.textContent = 'Загрузка: 100%';
+                // Загружаем с прогрессом (3 файла = 100%)
+                const loadWithProgress = (url, name, startPercent, endPercent) => {
+                    return new Promise((resolve, reject) => {
+                        fbxLoader.load(url, 
+                            (fbx) => {
+                                updateProgress(endPercent, `Загружено: ${name}`);
+                                resolve(fbx);
+                            },
+                            (xhr) => {
+                                const percent = startPercent + (xhr.loaded / xhr.total) * (endPercent - startPercent);
+                                updateProgress(percent, `Загрузка ${name}...`);
+                            },
+                            (err) => reject(err)
+                        );
+                    });
+                };
+                
+                // Загружаем последовательно с шагами по 30%
+                const modelFbx = await loadWithProgress(modelUrl, 'Idle', 10, 40);
+                const walkFbx = await loadWithProgress(walkUrl, 'Walking', 40, 70);
+                const danceFbx = await loadWithProgress(danceUrl, 'Dance', 70, 100);
+                
+                updateProgress(100, '✅ Всё загружено!');
+                console.log('✅ Все модели загружены успешно!');
                 
                 const scale = 0.01;
                 modelFbx.scale.set(scale, scale, scale);
@@ -212,7 +303,7 @@
                     
                     actions.idle.timeScale = 1.0;
                     actions.dance.timeScale = 1.0;
-                    actions.walk.timeScale = walkTimeScale;
+                    actions.walk.timeScale = 1.4;
                     
                     actions.idle.play();
                     currentAction = actions.idle;
@@ -220,21 +311,24 @@
                 
                 playerGroup.add(mainModel);
                 modelsLoaded = true;
-                loadingDiv.style.display = 'none';
+                
+                // --- РАЗБЛОКИРОВКА ---
+                setTimeout(() => {
+                    loadingOverlay.classList.add('hidden');
+                    menu.classList.add('visible');
+                    startBtn.classList.add('active');
+                }, 800);
                 
             } catch (error) {
-                console.error('❌ Ошибка загрузки:', error);
-                loadingText.textContent = 'Ошибка!';
-                const fallback = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.02, 0.01), new THREE.MeshStandardMaterial({ color: 0xffaa00 }));
-                fallback.position.y = 0.01;
-                playerGroup.add(fallback);
-                modelsLoaded = true;
-                setTimeout(() => loadingDiv.style.display = 'none', 1500);
+                loadError = true;
+                showError(`Ошибка загрузки: ${error.message || error}`);
             }
         }
+        
+        // Запускаем загрузку
         loadModels();
         
-        // --- Управление камерой (в игре) ---
+        // --- Управление камерой ---
         document.addEventListener('mousemove', (e) => {
             if (!isPlaying) return;
             cameraAngleHorizontal -= e.movementX * 0.005;
@@ -278,18 +372,23 @@
             }
         });
         
-        // --- MULTIPLAYER (ОДИН ОБЩИЙ СЕРВЕР) ---
+        // --- MULTIPLAYER ---
         let peer = null;
         let conn = null;
         let otherPlayers = {};
         const FIXED_ROOM_ID = 'my-global-game-server-2026';
         
         async function startMultiplayer() {
+            if (loadError || !modelsLoaded) {
+                alert('Модели не загружены! Проверьте консоль (F12).');
+                return;
+            }
+            
             peer = new Peer(FIXED_ROOM_ID, { debug: 2 });
             
             peer.on('open', (id) => {
-                document.getElementById('menu').style.display = 'none';
-                document.getElementById('ui').style.display = 'block';
+                menu.style.display = 'none';
+                ui.style.display = 'block';
                 isPlaying = true;
             });
             
@@ -322,8 +421,8 @@
             
             newConn.on('open', () => {
                 conn = newConn;
-                document.getElementById('menu').style.display = 'none';
-                document.getElementById('ui').style.display = 'block';
+                menu.style.display = 'none';
+                ui.style.display = 'block';
                 isPlaying = true;
                 
                 conn.on('data', (data) => {
@@ -335,6 +434,7 @@
         }
         
         function createRemotePlayer() {
+            if (!mainModel) return null;
             const clone = mainModel.clone();
             clone.scale.set(0.01, 0.01, 0.01);
             clone.position.set(0, 0.2, 0);
@@ -395,8 +495,8 @@
             }
         }
         
-        // --- Кнопка ВОЙТИ В ИГРУ ---
-        document.getElementById('startBtn').addEventListener('click', () => {
+        // --- Кнопка ВОЙТИ В ИГРУ (только если загружено) ---
+        startBtn.addEventListener('click', () => {
             startMultiplayer();
         });
         
@@ -417,89 +517,79 @@
             const delta = Math.min(now - lastTime, 0.05);
             lastTime = now;
             
-            if (modelsLoaded) {
-                // =============================================
-                // 🎬 КИНЕМАТОГРАФИЧНЫЙ ПОЛЁТ КАМЕРЫ В МЕНЮ
-                // =============================================
-                if (!isPlaying) {
-                    menuFlyTime += delta * 0.15; // Скорость полёта
-                    
-                    // Камера летает по большому кругу вокруг карты
-                    const radius = 35; // Радиус облёта
-                    const height = 12 + Math.sin(menuFlyTime * 0.3) * 3; // Плавно меняем высоту
-                    const x = Math.sin(menuFlyTime) * radius;
-                    const z = Math.cos(menuFlyTime) * radius;
-                    
-                    camera.position.set(x, height, z);
-                    
-                    // Камера всегда смотрит на центр карты (на персонажа)
-                    camera.lookAt(0, 0.5, 0);
-                }
+            // Если модели загружаются — крутим камеру в меню
+            if (!modelsLoaded && !loadError) {
+                menuFlyTime += delta * 0.15;
+                const radius = 35;
+                const height = 12 + Math.sin(menuFlyTime * 0.3) * 3;
+                const x = Math.sin(menuFlyTime) * radius;
+                const z = Math.cos(menuFlyTime) * radius;
                 
-                // =============================================
-                // 🎮 ИГРОВАЯ ЛОГИКА
-                // =============================================
-                if (isPlaying) {
-                    const forward = new THREE.Vector3(-Math.sin(cameraAngleHorizontal), 0, -Math.cos(cameraAngleHorizontal));
-                    const right = new THREE.Vector3(Math.cos(cameraAngleHorizontal), 0, -Math.sin(cameraAngleHorizontal));
-                    
-                    const moveDirection = new THREE.Vector3(0, 0, 0);
-                    if (keys.w) moveDirection.add(forward);
-                    if (keys.s) moveDirection.sub(forward);
-                    if (keys.a) moveDirection.sub(right);
-                    if (keys.d) moveDirection.add(right);
-                    
-                    if (moveDirection.length() > 0) {
-                        moveDirection.normalize();
-                        playerGroup.position.x += moveDirection.x * speed;
-                        playerGroup.position.z += moveDirection.z * speed;
-                        isWalking = true;
-                        const targetAngle = Math.atan2(moveDirection.x, moveDirection.z);
-                        playerGroup.rotation.y = targetAngle;
-                    } else {
-                        isWalking = false;
-                    }
-                    
-                    if (isWalking && isDancingMode) isDancingMode = false;
-                    
-                    if (isDancingMode && currentAction !== actions.dance) switchAnimation(actions.dance, 'dance');
-                    else if (isWalking && currentAction !== actions.walk) switchAnimation(actions.walk, 'walk');
-                    else if (!isWalking && currentAction !== actions.idle) switchAnimation(actions.idle, 'idle');
-                    
-                    if (keys.space && playerGroup.position.y <= groundY + 0.01) {
-                        verticalVelocity = jumpSpeed;
-                    }
-                    verticalVelocity += gravity;
-                    playerGroup.position.y += verticalVelocity;
-                    if (playerGroup.position.y < groundY) {
-                        playerGroup.position.y = groundY;
-                        verticalVelocity = 0;
-                    }
-                    
-                    const cameraOffset = new THREE.Vector3(
-                        Math.sin(cameraAngleHorizontal) * Math.cos(cameraAngleVertical) * cameraDistance,
-                        Math.sin(cameraAngleVertical) * cameraDistance + 0.5,
-                        Math.cos(cameraAngleHorizontal) * Math.cos(cameraAngleVertical) * cameraDistance
-                    );
-                    
-                    camera.position.copy(playerGroup.position.clone().add(cameraOffset));
-                    camera.lookAt(playerGroup.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
-                    
-                    if (conn) {
-                        sendMyState();
-                    }
-                }
-                
-                // --- Обновление анимаций ---
-                if (mixer) {
-                    mixer.update(delta);
-                }
-                Object.values(otherPlayers).forEach(remote => {
-                    if (remote.mixer) {
-                        remote.mixer.update(delta);
-                    }
-                });
+                camera.position.set(x, height, z);
+                camera.lookAt(0, 0.5, 0);
             }
+            
+            // Игровая логика
+            if (isPlaying && modelsLoaded) {
+                const forward = new THREE.Vector3(-Math.sin(cameraAngleHorizontal), 0, -Math.cos(cameraAngleHorizontal));
+                const right = new THREE.Vector3(Math.cos(cameraAngleHorizontal), 0, -Math.sin(cameraAngleHorizontal));
+                
+                const moveDirection = new THREE.Vector3(0, 0, 0);
+                if (keys.w) moveDirection.add(forward);
+                if (keys.s) moveDirection.sub(forward);
+                if (keys.a) moveDirection.sub(right);
+                if (keys.d) moveDirection.add(right);
+                
+                if (moveDirection.length() > 0) {
+                    moveDirection.normalize();
+                    playerGroup.position.x += moveDirection.x * speed;
+                    playerGroup.position.z += moveDirection.z * speed;
+                    isWalking = true;
+                    const targetAngle = Math.atan2(moveDirection.x, moveDirection.z);
+                    playerGroup.rotation.y = targetAngle;
+                } else {
+                    isWalking = false;
+                }
+                
+                if (isWalking && isDancingMode) isDancingMode = false;
+                
+                if (isDancingMode && currentAction !== actions.dance) switchAnimation(actions.dance, 'dance');
+                else if (isWalking && currentAction !== actions.walk) switchAnimation(actions.walk, 'walk');
+                else if (!isWalking && currentAction !== actions.idle) switchAnimation(actions.idle, 'idle');
+                
+                if (keys.space && playerGroup.position.y <= groundY + 0.01) {
+                    verticalVelocity = jumpSpeed;
+                }
+                verticalVelocity += gravity;
+                playerGroup.position.y += verticalVelocity;
+                if (playerGroup.position.y < groundY) {
+                    playerGroup.position.y = groundY;
+                    verticalVelocity = 0;
+                }
+                
+                const cameraOffset = new THREE.Vector3(
+                    Math.sin(cameraAngleHorizontal) * Math.cos(cameraAngleVertical) * cameraDistance,
+                    Math.sin(cameraAngleVertical) * cameraDistance + 0.5,
+                    Math.cos(cameraAngleHorizontal) * Math.cos(cameraAngleVertical) * cameraDistance
+                );
+                
+                camera.position.copy(playerGroup.position.clone().add(cameraOffset));
+                camera.lookAt(playerGroup.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
+                
+                if (conn) {
+                    sendMyState();
+                }
+            }
+            
+            // Обновление анимаций
+            if (mixer) {
+                mixer.update(delta);
+            }
+            Object.values(otherPlayers).forEach(remote => {
+                if (remote && remote.mixer) {
+                    remote.mixer.update(delta);
+                }
+            });
             
             renderer.render(scene, camera);
         }
