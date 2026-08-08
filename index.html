@@ -46,7 +46,7 @@
         
         // Генерируем уникальный ID и имя
         const myId = Math.random().toString(36).substring(2, 10);
-        const myName = "Я"; // Или можете заменить на prompt("Введите ваш ник:")
+        const myName = "Я";
 
         // =============================================================
         // СЦЕНА
@@ -97,7 +97,7 @@
         let cameraDistance = 5;
         
         // =============================================================
-        // ЗАГРУЗКА FBX МОДЕЛЕЙ
+        // ЗАГРУЗКА БАЗОВОЙ МОДЕЛИ
         // =============================================================
         const fbxLoader = new FBXLoader();
         let mainModel = null;
@@ -130,7 +130,10 @@
                 const box = new THREE.Box3().setFromObject(modelFbx);
                 modelFbx.position.sub(box.getCenter(new THREE.Vector3()));
                 modelFbx.position.y -= box.min.y * scale;
+                
+                // ===== СОХРАНЯЕМ ЧИСТУЮ МОДЕЛЬ ДЛЯ КЛОНИРОВАНИЯ =====
                 mainModel = modelFbx;
+                
                 const idleAnim = modelFbx.animations[0];
                 const walkAnim = walkFbx?.animations[0];
                 const danceAnim = danceFbx?.animations[0];
@@ -200,26 +203,21 @@
         }
 
         // =============================================================
-        // МУЛЬТИПЛЕЕР ЧЕРЕЗ SUPABASE (SQL)
+        // ФУНКЦИИ ДЛЯ МУЛЬТИПЛЕЕРА
         // =============================================================
-        let otherPlayers = {};
-        let isConnected = false;
-        let updateInterval = null;
 
-        // Функция создания спрайта (ника) над головой
-        function createNameTag(name, isMainPlayer = false) {
+        // Функция создания спрайта (ника)
+        function createNameTag(name, isMain = false) {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
             canvas.width = 256;
             canvas.height = 64;
             
-            // Фон
-            ctx.fillStyle = isMainPlayer ? 'rgba(255, 215, 0, 0.8)' : 'rgba(0, 0, 0, 0.6)';
+            ctx.fillStyle = isMain ? 'rgba(255, 215, 0, 0.8)' : 'rgba(0, 0, 0, 0.7)';
             ctx.roundRect(10, 10, canvas.width - 20, canvas.height - 20, 20);
             ctx.fill();
             
-            // Текст
-            ctx.fillStyle = isMainPlayer ? '#000' : '#fff';
+            ctx.fillStyle = isMain ? '#000' : '#fff';
             ctx.font = 'bold 36px Arial';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -232,34 +230,62 @@
             return sprite;
         }
 
-        // Создаём клона игрока
-        function createOtherPlayer(id, name) {
+        // Создать модель для ДРУГОГО игрока (она всегда красная)
+        function createOtherPlayerModel(name) {
             if (!mainModel) return null;
+            
+            // Клонируем ЧИСТУЮ модель (не тронутую)
             const clone = mainModel.clone();
             clone.scale.set(0.01, 0.01, 0.01);
             
-            // Красим других игроков в красный оттенок
+            // Перекрашиваем в КРАСНЫЙ
             clone.traverse((child) => {
                 if (child.isMesh) {
                     child.material = child.material.clone();
-                    child.material.color.setHex(0xcc4444); // Красноватый
+                    child.material.color.setHex(0xcc3333); 
                 }
             });
             
-            // Добавляем ник
+            // Вешаем ник
             const nameTag = createNameTag(name, false);
-            nameTag.position.y = 1.8; // Над головой
+            nameTag.position.y = 1.8;
             clone.add(nameTag);
             
             return clone;
         }
+
+        // Настроить МОЮ модель (она всегда золотая)
+        function setupMyModel() {
+            if (!mainModel) return;
+            
+            // Перекрашиваем в ЗОЛОТОЙ
+            mainModel.traverse((child) => {
+                if (child.isMesh) {
+                    child.material = child.material.clone();
+                    child.material.color.setHex(0xffaa00);
+                    child.material.emissive = new THREE.Color(0x442200);
+                }
+            });
+            
+            // Вешаем свой ник
+            const myNameTag = createNameTag(myName, true);
+            myNameTag.position.y = 1.8;
+            playerGroup.add(myNameTag);
+        }
+
+        // =============================================================
+        // МУЛЬТИПЛЕЕР (SUPABASE)
+        // =============================================================
+        let otherPlayers = {};
+        let isConnected = false;
+        let updateInterval = null;
 
         async function initMultiplayer() {
             document.getElementById('status').style.display = 'block';
             document.getElementById('status').textContent = '⏳ Регистрация...';
             
             try {
-                // Регистрируемся в БД (вставляем или обновляем)
+                // Регистрируемся в БД
                 await supabase.from('players').upsert({
                     id: myId,
                     name: myName,
@@ -267,20 +293,8 @@
                     last_seen: new Date().toISOString()
                 });
                 
-                // Красим своего игрока в золотой
-                if (mainModel) {
-                    mainModel.traverse((child) => {
-                        if (child.isMesh) {
-                            child.material = child.material.clone();
-                            child.material.color.setHex(0xffaa00); // Золотой
-                            child.material.emissive = new THREE.Color(0x442200);
-                        }
-                    });
-                    // Добавляем свой ник
-                    const myNameTag = createNameTag(myName, true);
-                    myNameTag.position.y = 1.8;
-                    playerGroup.add(myNameTag);
-                }
+                // Красим себя в золотой
+                setupMyModel();
                 
                 isConnected = true;
                 document.getElementById('status').textContent = '✅ Онлайн';
@@ -288,7 +302,6 @@
                 document.getElementById('ui').style.display = 'block';
                 isPlaying = true;
                 
-                // Запускаем цикл обновления позиции (раз в 50 мс)
                 updateInterval = setInterval(syncLoop, 50);
                 
             } catch (error) {
@@ -300,7 +313,7 @@
         async function syncLoop() {
             if (!isConnected || !isPlaying) return;
             
-            // 1. Отправляем свою позицию в БД
+            // 1. Отправляем свою позицию
             await supabase.from('players').upsert({
                 id: myId,
                 name: myName,
@@ -311,7 +324,7 @@
                 last_seen: new Date().toISOString()
             });
 
-            // 2. Получаем всех активных игроков (за последние 2 секунды)
+            // 2. Получаем других игроков
             const twoSecondsAgo = new Date(Date.now() - 2000).toISOString();
             const { data: players, error } = await supabase
                 .from('players')
@@ -324,9 +337,9 @@
                 return;
             }
 
-            // 3. Синхронизируем модели
+            // 3. Синхронизируем
             if (players) {
-                // Удаляем тех, кто вышел
+                // Удаляем вышедших
                 for (const key in otherPlayers) {
                     if (!players.find(p => p.id === key)) {
                         scene.remove(otherPlayers[key]);
@@ -337,7 +350,8 @@
                 // Добавляем/обновляем
                 for (const player of players) {
                     if (!otherPlayers[player.id]) {
-                        const clone = createOtherPlayer(player.id, player.name || 'Игрок');
+                        // Создаём КРАСНОГО игрока
+                        const clone = createOtherPlayerModel(player.name || 'Игрок');
                         if (clone) {
                             clone.position.set(player.x, player.y, player.z);
                             clone.rotation.y = player.rot_y || 0;
