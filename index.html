@@ -34,7 +34,7 @@
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
         // =============================================================
-        // ВАШ URL СЕРВЕРА (ПРАВИЛЬНЫЙ wss://)
+        // ВАШ URL СЕРВЕРА
         // =============================================================
         const SERVER_URL = 'wss://divine-heart-7248.tvink001v.workers.dev';
 
@@ -203,18 +203,18 @@
             return clone;
         }
 
-        function initServer() {
+        function initMultiplayer() {
             document.getElementById('status').style.display = 'block';
             ws = new WebSocket(SERVER_URL);
             
             ws.onopen = () => {
-                console.log('✅ Подключено к серверу!');
-                document.getElementById('status').textContent = '✅ Онлайн';
+                console.log("✅ Подключено к серверу!");
+                document.getElementById('status').textContent = "✅ Онлайн";
                 document.getElementById('menu').style.display = 'none';
                 document.getElementById('ui').style.display = 'block';
                 isPlaying = true;
                 
-                // Отправляем ID при подключении
+                // Сообщаем серверу, кто мы
                 ws.send(JSON.stringify({ type: 'init', id: myId }));
                 
                 // Периодическая отправка позиции
@@ -236,12 +236,16 @@
                 const data = JSON.parse(event.data);
                 if (data.type === 'players') {
                     const players = data.data;
+                    
+                    // Удаляем тех, кто вышел
                     for (const key in otherPlayers) {
                         if (!players.find(p => p.id === key)) {
                             scene.remove(otherPlayers[key]);
                             delete otherPlayers[key];
                         }
                     }
+                    
+                    // Добавляем/обновляем
                     for (const player of players) {
                         if (player.id === myId) continue;
                         if (!otherPlayers[player.id]) {
@@ -263,7 +267,7 @@
             ws.onerror = (e) => { console.error('❌ Ошибка:', e); };
         }
 
-        document.getElementById('startBtn').addEventListener('click', initServer);
+        document.getElementById('startBtn').addEventListener('click', initMultiplayer);
 
         // =============================================================
         // АНИМАЦИЯ
