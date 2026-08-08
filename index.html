@@ -79,26 +79,30 @@
         }
     </script>
 
+    <!-- Photon SDK через CDN - обычный скрипт, не модуль -->
+    <script src="https://cdn.jsdelivr.net/npm/photon-js-sdk@4.1.1/dist/photon.min.js"></script>
+
     <script type="module">
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
         // =============================================================
-        // ЗАГРУЗКА PHOTON ЧЕРЕЗ CDN (динамический импорт)
+        // ЖДЕМ ЗАГРУЗКИ PHOTON
         // =============================================================
-        console.log('⏳ Загрузка Photon с CDN...');
-        const Photon = await import('https://cdn.jsdelivr.net/npm/photon-js-sdk@4.1.1/dist/photon.esm.js')
-            .then(m => m.default || m)
-            .catch(e => {
-                console.error('❌ Ошибка загрузки Photon:', e);
-                return null;
-            });
+        console.log('⏳ Ожидание загрузки Photon...');
         
-        if (Photon) {
-            console.log('✅ Photon загружен!');
-        } else {
-            console.error('❌ Photon не загрузился!');
-        }
+        // Ждем пока Photon появится в глобальном пространстве
+        await new Promise((resolve) => {
+            const checkPhoton = () => {
+                if (window.Photon) {
+                    console.log('✅ Photon загружен!');
+                    resolve();
+                } else {
+                    setTimeout(checkPhoton, 100);
+                }
+            };
+            checkPhoton();
+        });
 
         // =============================================================
         // НАСТРОЙКИ PHOTON
@@ -325,32 +329,34 @@
         }
 
         function initPhoton() {
-            if (!Photon) {
+            if (!window.Photon) {
                 console.error('❌ Photon не загружен! Проверьте интернет.');
                 return;
             }
             
-            // Инициализация Photon
-            photon = new Photon.LoadBalancing.LoadBalancingClient(
+            // Инициализация Photon - используем window.Photon вместо Photon
+            const PhotonSDK = window.Photon;
+            
+            photon = new PhotonSDK.LoadBalancing.LoadBalancingClient(
                 PHOTON_APP_ID, 
                 PHOTON_APP_VERSION
             );
             
             // Настройки подключения
-            photon.setLogLevel(Photon.LoadBalancing.LoadBalancingClient.LogLevel.Warning);
+            photon.setLogLevel(PhotonSDK.LoadBalancing.LoadBalancingClient.LogLevel.Warning);
             photon.setUseWebSocket(true);
             
             // Слушаем события
-            photon.addEventListener(Photon.LoadBalancing.LoadBalancingClient.EventName.Connect, (args) => {
+            photon.addEventListener(PhotonSDK.LoadBalancing.LoadBalancingClient.EventName.Connect, (args) => {
                 console.log('✅ Подключен к Photon Cloud!');
                 photon.opJoinRandomRoom();
             });
             
-            photon.addEventListener(Photon.LoadBalancing.LoadBalancingClient.EventName.Error, (args) => {
+            photon.addEventListener(PhotonSDK.LoadBalancing.LoadBalancingClient.EventName.Error, (args) => {
                 console.error('❌ Ошибка Photon:', args.errorMessage);
             });
             
-            photon.addEventListener(Photon.LoadBalancing.LoadBalancingClient.EventName.JoinRandomRoomFailed, (args) => {
+            photon.addEventListener(PhotonSDK.LoadBalancing.LoadBalancingClient.EventName.JoinRandomRoomFailed, (args) => {
                 // Если нет комнат, создаем свою
                 photon.opCreateRoom('3d-game-room', {
                     maxPlayers: 10,
@@ -359,7 +365,7 @@
                 });
             });
             
-            photon.addEventListener(Photon.LoadBalancing.LoadBalancingClient.EventName.JoinRoom, (args) => {
+            photon.addEventListener(PhotonSDK.LoadBalancing.LoadBalancingClient.EventName.JoinRoom, (args) => {
                 console.log('✅ Присоединился к комнате!');
                 myActorNumber = photon.getLocalPlayer().actorNumber;
                 
@@ -389,7 +395,7 @@
                 sendMyState();
             });
             
-            photon.addEventListener(Photon.LoadBalancing.LoadBalancingClient.EventName.PlayerPropertiesChanged, (args) => {
+            photon.addEventListener(PhotonSDK.LoadBalancing.LoadBalancingClient.EventName.PlayerPropertiesChanged, (args) => {
                 const player = args.player;
                 if (player.actorNumber === myActorNumber) return;
                 
@@ -417,7 +423,7 @@
                 }
             });
             
-            photon.addEventListener(Photon.LoadBalancing.LoadBalancingClient.EventName.PlayerLeave, (args) => {
+            photon.addEventListener(PhotonSDK.LoadBalancing.LoadBalancingClient.EventName.PlayerLeave, (args) => {
                 const player = args.player;
                 if (otherPlayers[player.actorNumber]) {
                     scene.remove(otherPlayers[player.actorNumber]);
