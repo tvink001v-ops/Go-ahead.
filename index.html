@@ -3,82 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Мультиплеер (Мир онлайн)</title>
+    <title>3D Мультиплеер (Онлайн)</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
-        #menu {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 10;
-            background: rgba(0,0,0,0.3);
-            pointer-events: none;
-        }
-        #startBtn {
-            pointer-events: auto;
-            padding: 20px 60px;
-            font-size: 2rem;
-            background: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            box-shadow: 0 0 30px rgba(76, 175, 80, 0.5);
-            transition: transform 0.2s;
-        }
+        #menu { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; z-index: 10; background: rgba(0,0,0,0.3); pointer-events: none; }
+        #startBtn { pointer-events: auto; padding: 20px 60px; font-size: 2rem; background: #4CAF50; color: white; border: none; border-radius: 10px; cursor: pointer; box-shadow: 0 0 30px rgba(76, 175, 80, 0.5); transition: transform 0.2s; }
         #startBtn:hover { transform: scale(1.1); }
-        #ui {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            color: white;
-            font-size: 1.2rem;
-            text-shadow: 0 0 10px black;
-            display: none;
-            z-index: 5;
-        }
-        #loading {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            font-size: 2rem;
-            text-shadow: 0 0 20px black;
-            z-index: 20;
-            display: none;
-            text-align: center;
-        }
-        #status {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            color: #00ff00;
-            font-size: 1.2rem;
-            text-shadow: 0 0 10px black;
-            z-index: 5;
-            display: none;
-            background: rgba(0,0,0,0.5);
-            padding: 10px 20px;
-            border-radius: 10px;
-        }
+        #ui { position: absolute; bottom: 20px; left: 20px; color: white; font-size: 1.2rem; text-shadow: 0 0 10px black; display: none; z-index: 5; }
+        #loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 2rem; text-shadow: 0 0 20px black; z-index: 20; display: none; text-align: center; }
+        #status { position: absolute; top: 20px; right: 20px; color: #00ff00; font-size: 1.2rem; text-shadow: 0 0 10px black; z-index: 5; display: none; background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 10px; }
     </style>
 </head>
 <body>
-    <div id="menu"><button id="startBtn">ВОЙТИ В ИГРУ (Онлайн)</button></div>
-    <div id="ui">
-        <div>WASD — ходьба | Пробел — прыжок | B — танец</div>
-        <div>Клик по экрану — захват мыши</div>
-    </div>
-    <div id="loading">
-        <div id="loadingText">Загрузка: 0%</div>
-        <div class="sub">Загружаем модель и анимации...</div>
-    </div>
+    <div id="menu"><button id="startBtn">ВОЙТИ В ИГРУ</button></div>
+    <div id="ui"><div>WASD — ходьба | Пробел — прыжок | B — танец</div></div>
+    <div id="loading"><div id="loadingText">Загрузка: 0%</div></div>
     <div id="status">⏳ Подключение к серверу...</div>
 
     <script type="importmap">
@@ -95,9 +34,9 @@
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
 
         // =============================================================
-        // ВАШ URL СЕРВЕРА (Cloudflare Worker)
+        // ВАШ URL СЕРВЕРА (ПРАВИЛЬНЫЙ wss://)
         // =============================================================
-        const SERVER_URL = 'wss://divine-heart-7248.tvink00tv.workers.dev';
+        const SERVER_URL = 'wss://divine-heart-7248.tvink001v.workers.dev';
 
         // =============================================================
         // СЦЕНА
@@ -118,21 +57,15 @@
         // --- Освещение ---
         const ambient = new THREE.AmbientLight(0xffffff, 0.6);
         scene.add(ambient);
-        
         const dirLight = new THREE.DirectionalLight(0xffffff, 1);
         dirLight.position.set(10, 20, 10);
         dirLight.castShadow = true;
-        dirLight.shadow.mapSize.width = 2048;
-        dirLight.shadow.mapSize.height = 2048;
         scene.add(dirLight);
         
         // --- Бесконечная земля ---
         function createGround() {
             const texture = new THREE.TextureLoader().load('https://raw.githubusercontent.com/tvink001v-ops/Go-ahead./main/1642522213_3-abrakadabra-fun-p-tekstura-travi-dlya-genplana-8.jpg');
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
-            texture.repeat.set(300, 300);
-            
+            texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping; texture.repeat.set(300, 300);
             const geometry = new THREE.PlaneGeometry(1000, 1000);
             const material = new THREE.MeshStandardMaterial({ map: texture, roughness: 0.8 });
             const ground = new THREE.Mesh(geometry, material);
@@ -148,7 +81,7 @@
         playerGroup.position.set(0, 0, 0);
         scene.add(playerGroup);
 
-        // --- Переменные камеры ---
+        // --- Камера ---
         let cameraAngleHorizontal = 0;
         let cameraAngleVertical = 0.5;
         let cameraDistance = 5;
@@ -165,9 +98,7 @@
         let modelsLoaded = false;
         const loadingDiv = document.getElementById('loading');
         const loadingText = document.getElementById('loadingText');
-        
         const speed = 0.07;
-        const walkTimeScale = 1.4;
         
         async function loadModels() {
             loadingDiv.style.display = 'block';
@@ -177,98 +108,39 @@
                     'https://raw.githubusercontent.com/tvink001v-ops/Go-ahead./3e271cedf51ef1d55cb50aa7be37fabc611dec37/Walking.fbx',
                     'https://raw.githubusercontent.com/tvink001v-ops/Go-ahead./main/Silly%20Dancing.fbx'
                 ];
-                
-                const loadWithProgress = (url) => {
-                    return new Promise((resolve, reject) => {
-                        fbxLoader.load(url, 
-                            (fbx) => resolve(fbx),
-                            (xhr) => {
-                                const total = urls.length;
-                                const loaded = urls.filter(u => u !== url).length;
-                                const percent = Math.min(100, Math.round(((loaded) / total) * 100));
-                                loadingText.textContent = `Загрузка: ${percent}%`;
-                            },
-                            (error) => reject(error)
-                        );
-                    });
-                };
-                
                 const [modelFbx, walkFbx, danceFbx] = await Promise.all([
-                    loadWithProgress(urls[0]),
-                    loadWithProgress(urls[1]),
-                    loadWithProgress(urls[2])
+                    new Promise(r => fbxLoader.load(urls[0], r, undefined, () => r(null))),
+                    new Promise(r => fbxLoader.load(urls[1], r, undefined, () => r(null))),
+                    new Promise(r => fbxLoader.load(urls[2], r, undefined, () => r(null)))
                 ]);
-                
-                loadingText.textContent = 'Загрузка: 100%';
-                
+                if (!modelFbx) return;
+                loadingText.textContent = '100%';
                 const scale = 0.01;
                 modelFbx.scale.set(scale, scale, scale);
-                const modelBox = new THREE.Box3().setFromObject(modelFbx);
-                const modelCenter = modelBox.getCenter(new THREE.Vector3());
-                modelFbx.position.sub(modelCenter);
-                const modelMinY = modelBox.min.y * scale;
-                modelFbx.position.y -= modelMinY;
-                modelFbx.castShadow = true;
-                modelFbx.receiveShadow = true;
-                
+                const box = new THREE.Box3().setFromObject(modelFbx);
+                modelFbx.position.sub(box.getCenter(new THREE.Vector3()));
+                modelFbx.position.y -= box.min.y * scale;
                 mainModel = modelFbx;
-                
                 const idleAnim = modelFbx.animations[0];
                 const walkAnim = walkFbx?.animations[0];
                 const danceAnim = danceFbx?.animations[0];
-                
                 if (idleAnim && walkAnim && danceAnim) {
-                    mainModel.animations.push(walkAnim);
-                    mainModel.animations.push(danceAnim);
-                    
+                    mainModel.animations.push(walkAnim, danceAnim);
                     mixer = new THREE.AnimationMixer(mainModel);
-                    
                     actions.idle = mixer.clipAction(idleAnim);
                     actions.walk = mixer.clipAction(walkAnim);
                     actions.dance = mixer.clipAction(danceAnim);
-                    
-                    actions.idle.timeScale = 1.0;
-                    actions.dance.timeScale = 1.0;
-                    actions.walk.timeScale = walkTimeScale;
-                    
                     actions.idle.play();
                     currentAction = actions.idle;
                 }
-                
                 playerGroup.add(mainModel);
                 modelsLoaded = true;
                 loadingDiv.style.display = 'none';
-                
-            } catch (error) {
-                console.error('❌ Ошибка загрузки:', error);
-                loadingText.textContent = 'Ошибка! Используем куб.';
-                const fallback = new THREE.Mesh(
-                    new THREE.BoxGeometry(0.01, 0.02, 0.01),
-                    new THREE.MeshStandardMaterial({ color: 0xffaa00 })
-                );
-                fallback.position.y = 0.01;
-                playerGroup.add(fallback);
-                modelsLoaded = true;
-                setTimeout(() => loadingDiv.style.display = 'none', 1500);
-            }
+            } catch (e) { console.error(e); }
         }
         loadModels();
         
-        // --- Управление камерой ---
-        document.addEventListener('mousemove', (e) => {
-            if (!isPlaying) return;
-            cameraAngleHorizontal -= e.movementX * 0.005;
-            cameraAngleVertical -= e.movementY * 0.005;
-            cameraAngleVertical = Math.max(0.1, Math.min(1.5, cameraAngleVertical));
-        });
-        
-        renderer.domElement.addEventListener('click', () => {
-            if (isPlaying) {
-                renderer.domElement.requestPointerLock();
-            }
-        });
-        
-        // --- Игровое состояние ---
+        // --- Управление ---
         let isPlaying = false;
         const keys = { w: false, a: false, s: false, d: false, space: false };
         let verticalVelocity = 0;
@@ -277,7 +149,17 @@
         const groundY = 0;
         let isWalking = false;
         let isDancingMode = false;
-        
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isPlaying) return;
+            cameraAngleHorizontal -= e.movementX * 0.005;
+            cameraAngleVertical -= e.movementY * 0.005;
+            cameraAngleVertical = Math.max(0.1, Math.min(1.5, cameraAngleVertical));
+        });
+        renderer.domElement.addEventListener('click', () => {
+            if (isPlaying) renderer.domElement.requestPointerLock();
+        });
+
         document.addEventListener('keydown', (e) => {
             if (!isPlaying) return;
             switch(e.code) {
@@ -286,12 +168,7 @@
                 case 'KeyS': keys.s = true; break;
                 case 'KeyD': keys.d = true; break;
                 case 'Space': e.preventDefault(); keys.space = true; break;
-                case 'KeyB': 
-                    e.preventDefault(); 
-                    if (!isWalking) {
-                        isDancingMode = !isDancingMode;
-                    }
-                    break;
+                case 'KeyB': e.preventDefault(); if (!isWalking) isDancingMode = !isDancingMode; break;
             }
         });
         document.addEventListener('keyup', (e) => {
@@ -304,9 +181,16 @@
                 case 'Space': keys.space = false; break;
             }
         });
-        
+
+        function switchAnimation(newAction) {
+            if (currentAction === newAction) return;
+            if (currentAction) currentAction.fadeOut(0.1);
+            newAction.reset().fadeIn(0.1).play();
+            currentAction = newAction;
+        }
+
         // =============================================================
-        // ПОДКЛЮЧЕНИЕ К ЕДИНОМУ СЕРВЕРУ
+        // ПОДКЛЮЧЕНИЕ К СЕРВЕРУ
         // =============================================================
         let ws = null;
         let otherPlayers = {};
@@ -319,57 +203,47 @@
             return clone;
         }
 
-        function sendMyState() {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'update',
-                    id: myId,
-                    x: playerGroup.position.x,
-                    y: playerGroup.position.y,
-                    z: playerGroup.position.z,
-                    rotY: playerGroup.rotation.y
-                }));
-            }
-        }
-
         function initServer() {
             document.getElementById('status').style.display = 'block';
-            
             ws = new WebSocket(SERVER_URL);
             
             ws.onopen = () => {
                 console.log('✅ Подключено к серверу!');
                 document.getElementById('status').textContent = '✅ Онлайн';
-                document.getElementById('status').style.color = '#00ff00';
                 document.getElementById('menu').style.display = 'none';
                 document.getElementById('ui').style.display = 'block';
                 isPlaying = true;
                 
-                // Отправляем свою позицию
-                sendMyState();
+                // Отправляем ID при подключении
+                ws.send(JSON.stringify({ type: 'init', id: myId }));
                 
-                // Отправляем позицию каждые 100мс
-                setInterval(sendMyState, 100);
+                // Периодическая отправка позиции
+                setInterval(() => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({
+                            type: 'update',
+                            id: myId,
+                            x: playerGroup.position.x,
+                            y: playerGroup.position.y,
+                            z: playerGroup.position.z,
+                            rotY: playerGroup.rotation.y
+                        }));
+                    }
+                }, 100);
             };
             
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                
                 if (data.type === 'players') {
                     const players = data.data;
-                    
-                    // Удаляем тех, кого нет в списке
                     for (const key in otherPlayers) {
                         if (!players.find(p => p.id === key)) {
                             scene.remove(otherPlayers[key]);
                             delete otherPlayers[key];
                         }
                     }
-                    
-                    // Добавляем/обновляем тех, кто есть
                     for (const player of players) {
                         if (player.id === myId) continue;
-                        
                         if (!otherPlayers[player.id]) {
                             const clone = createOtherPlayer();
                             if (clone) {
@@ -385,41 +259,17 @@
                     }
                 }
             };
-            
-            ws.onclose = () => {
-                console.log('❌ Соединение разорвано');
-                document.getElementById('status').textContent = '❌ Отключено';
-                document.getElementById('status').style.color = '#ff0000';
-            };
-            
-            ws.onerror = (error) => {
-                console.error('❌ Ошибка WebSocket:', error);
-                document.getElementById('status').textContent = '❌ Ошибка';
-                document.getElementById('status').style.color = '#ff0000';
-            };
+            ws.onclose = () => { console.log('❌ Отключено'); };
+            ws.onerror = (e) => { console.error('❌ Ошибка:', e); };
         }
 
-        // =============================================================
-        // ЗАПУСК
-        // =============================================================
         document.getElementById('startBtn').addEventListener('click', initServer);
 
         // =============================================================
-        // ПЛАВНОЕ ПЕРЕКЛЮЧЕНИЕ АНИМАЦИЙ
-        // =============================================================
-        function switchAnimation(newAction) {
-            if (currentAction === newAction) return;
-            if (currentAction) currentAction.fadeOut(0.1);
-            newAction.reset().fadeIn(0.1).play();
-            currentAction = newAction;
-        }
-
-        // =============================================================
-        // ИГРОВОЙ ЦИКЛ
+        // АНИМАЦИЯ
         // =============================================================
         function animate() {
             requestAnimationFrame(animate);
-            
             const now = performance.now() / 1000;
             const delta = Math.min(now - lastTime, 0.05);
             lastTime = now;
@@ -427,53 +277,35 @@
             if (isPlaying && modelsLoaded) {
                 const forward = new THREE.Vector3(-Math.sin(cameraAngleHorizontal), 0, -Math.cos(cameraAngleHorizontal));
                 const right = new THREE.Vector3(Math.cos(cameraAngleHorizontal), 0, -Math.sin(cameraAngleHorizontal));
-                
                 const moveDirection = new THREE.Vector3(0, 0, 0);
                 if (keys.w) moveDirection.add(forward);
                 if (keys.s) moveDirection.sub(forward);
                 if (keys.a) moveDirection.sub(right);
                 if (keys.d) moveDirection.add(right);
-                
                 if (moveDirection.length() > 0) {
                     moveDirection.normalize();
                     playerGroup.position.x += moveDirection.x * speed;
                     playerGroup.position.z += moveDirection.z * speed;
                     isWalking = true;
                     playerGroup.rotation.y = Math.atan2(moveDirection.x, moveDirection.z);
-                } else {
-                    isWalking = false;
-                }
-                
+                } else { isWalking = false; }
                 if (isWalking && isDancingMode) isDancingMode = false;
-                
                 if (isDancingMode && currentAction !== actions.dance) switchAnimation(actions.dance);
                 else if (isWalking && currentAction !== actions.walk) switchAnimation(actions.walk);
                 else if (!isWalking && currentAction !== actions.idle) switchAnimation(actions.idle);
-                
-                if (keys.space && playerGroup.position.y <= groundY + 0.01) {
-                    verticalVelocity = jumpSpeed;
-                }
+                if (keys.space && playerGroup.position.y <= groundY + 0.01) verticalVelocity = jumpSpeed;
                 verticalVelocity += gravity;
                 playerGroup.position.y += verticalVelocity;
-                if (playerGroup.position.y < groundY) {
-                    playerGroup.position.y = groundY;
-                    verticalVelocity = 0;
-                }
-                
+                if (playerGroup.position.y < groundY) { playerGroup.position.y = groundY; verticalVelocity = 0; }
                 const cameraOffset = new THREE.Vector3(
                     Math.sin(cameraAngleHorizontal) * Math.cos(cameraAngleVertical) * cameraDistance,
                     Math.sin(cameraAngleVertical) * cameraDistance + 0.5,
                     Math.cos(cameraAngleHorizontal) * Math.cos(cameraAngleVertical) * cameraDistance
                 );
-                
                 camera.position.copy(playerGroup.position.clone().add(cameraOffset));
                 camera.lookAt(playerGroup.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
-                
-                if (mixer) {
-                    mixer.update(delta);
-                }
+                if (mixer) mixer.update(delta);
             }
-            
             renderer.render(scene, camera);
         }
         animate();
