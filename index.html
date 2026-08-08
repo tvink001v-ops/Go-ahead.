@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Онлайн Игра (Photon встроен)</title>
+    <title>3D Мультиплеер (Colyseus Cloud)</title>
     <style>
         body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
         #menu {
@@ -70,6 +70,9 @@
         <div class="sub">Загружаем модель и анимации...</div>
     </div>
 
+    <!-- Colyseus клиент (работает везде) -->
+    <script src="https://unpkg.com/colyseus.js@0.14.0/dist/colyseus.min.js"></script>
+
     <script type="importmap">
         {
             "imports": {
@@ -83,108 +86,8 @@
         import * as THREE from 'three';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
         
-        // =============================================================
-        // ВСТРОЕННЫЙ PHOTON (исправлена инициализация)
-        // =============================================================
-        var Photon = (function() {
-            var e = {};
-            function n(r) {
-                if (e[r]) return e[r].exports;
-                var o = e[r] = { exports: {} };
-                return t[r](o, o.exports, n), o.exports;
-            }
-            var t = {
-                0: function(e, n, t) {
-                    e.exports = t(1);
-                },
-                1: function(e, n, t) {
-                    e.exports = t(2).LoadBalancingClient;
-                },
-                2: function(e, n, t) {
-                    e.exports = t(3);
-                },
-                3: function(e, n, t) {
-                    var r = {};
-
-                    // Базовый класс
-                    var LoadBalancingClient = function(protocol, appId, server, port, version) {
-                        this.appId = appId;
-                        this.server = server;
-                        this.port = port;
-                        this.version = version;
-                        this.protocol = protocol;
-                        this.actorNumber = 0;
-                        this.isInRoom = false;
-                        this.listeners = {};
-                        this._connection = null;
-                    };
-
-                    LoadBalancingClient.EVENT_CONNECT = 'connect';
-                    LoadBalancingClient.EVENT_JOIN_ROOM = 'joinRoom';
-                    LoadBalancingClient.EVENT_EVENT_DATA = 'eventData';
-                    LoadBalancingClient.EVENT_ERROR = 'error';
-                    LoadBalancingClient.EVENT_DISCONNECT = 'disconnect';
-
-                    LoadBalancingClient.prototype.on = function(event, callback) {
-                        if (!this.listeners[event]) this.listeners[event] = [];
-                        this.listeners[event].push(callback);
-                    };
-
-                    LoadBalancingClient.prototype.emit = function(event, data) {
-                        if (this.listeners[event]) {
-                            this.listeners[event].forEach(function(cb) { cb(data); });
-                        }
-                    };
-
-                    LoadBalancingClient.prototype.connect = function() {
-                        var self = this;
-                        // Эмуляция подключения к облачному серверу Photon
-                        console.log('Подключение к Photon Cloud (эмуляция)...');
-                        setTimeout(function() {
-                            self.emit(LoadBalancingClient.EVENT_CONNECT, {});
-                        }, 500);
-                    };
-
-                    LoadBalancingClient.prototype.opJoinOrCreateRoom = function(roomName) {
-                        var self = this;
-                        console.log('Вход в комнату:', roomName);
-                        this.isInRoom = true;
-                        this.actorNumber = Math.floor(Math.random() * 1000) + 1;
-                        setTimeout(function() {
-                            self.emit(LoadBalancingClient.EVENT_JOIN_ROOM, {});
-                        }, 500);
-                    };
-
-                    LoadBalancingClient.prototype.opRaiseEvent = function(code, data) {
-                        console.log('Отправка события в комнату:', code, data);
-                        // Эмуляция отправки
-                        var self = this;
-                        setTimeout(function() {
-                            // Имитируем получение события от другого игрока (эхо)
-                            var eventData = { code: code, data: data };
-                            self.emit(LoadBalancingClient.EVENT_EVENT_DATA, eventData);
-                        }, 100);
-                    };
-
-                    r.LoadBalancingClient = LoadBalancingClient;
-                    r.ConnectionProtocol = {
-                        Wss: 'wss',
-                        Tcp: 'tcp',
-                        Udp: 'udp'
-                    };
-                    r.LoadBalancingClient.DefaultServer = 'wss://ns.photonengine.io';
-                    r.LoadBalancingClient.DefaultPort = 9090;
-                    r.LoadBalancingClient.DefaultVersion = '1.0.0.0';
-
-                    return r;
-                }
-            };
-            // Запуск модуля
-            return n(0);
-        })();
-        // =============================================================
-
-        console.log('✅ Photon встроен в код!');
+        // --- Глобальный клиент Colyseus ---
+        const client = new Colyseus.Client('wss://colyseus-game-server.onrender.com');
 
         // --- Сцена, Камера, Рендерер ---
         const scene = new THREE.Scene();
@@ -394,98 +297,76 @@
         });
         
         // =============================================================
-        // PHOTON МУЛЬТИПЛЕЕР (встроенный)
+        // COLYSEUS МУЛЬТИПЛЕЕР
         // =============================================================
-        let loadBalancingClient = null;
+        let room = null;
         let otherPlayers = {};
-        let myActorNumber = 0;
-        const ROOM_NAME = 'My3DGameRoom';
-        const APP_ID = '19e941e7-99db-4b55-bb0d-53d6d9a0b830';
+        let mySessionId = '';
 
-        function initPhoton() {
-            if (typeof Photon === 'undefined' || typeof Photon.LoadBalancingClient === 'undefined') {
-                console.error('Ошибка! Photon не инициализирован!');
-                return;
-            }
-            
-            console.log('🚀 Инициализация Photon...');
-            loadBalancingClient = new Photon.LoadBalancingClient(
-                Photon.ConnectionProtocol.Wss,
-                APP_ID,
-                Photon.LoadBalancingClient.DefaultServer,
-                Photon.LoadBalancingClient.DefaultPort,
-                Photon.LoadBalancingClient.DefaultVersion
-            );
-            
-            loadBalancingClient.connect();
+        async function initColyseus() {
+            try {
+                console.log('🚀 Подключаемся к серверу Colyseus...');
+                room = await client.joinOrCreate('lobby');
+                mySessionId = room.sessionId;
+                console.log(`✅ Подключено! Ваш ID: ${mySessionId}`);
+                
+                // Отправляем свои данные при входе
+                room.send('updatePlayer', {
+                    x: playerGroup.position.x,
+                    y: playerGroup.position.y,
+                    z: playerGroup.position.z,
+                    rotY: playerGroup.rotation.y,
+                    anim: 'idle'
+                });
 
-            loadBalancingClient.on(Photon.LoadBalancingClient.EVENT_CONNECT, () => {
-                console.log('✅ Подключено к серверу Photon!');
-                loadBalancingClient.opJoinOrCreateRoom(ROOM_NAME);
-            });
+                room.state.players.onAdd = (player, key) => {
+                    console.log('👥 Игрок подключился:', key);
+                    if (key === mySessionId) return;
+                    if (!mainModel) return;
+                    
+                    const clone = mainModel.clone();
+                    clone.scale.set(0.01, 0.01, 0.01);
+                    clone.position.set(player.x, player.y + 0.2, player.z);
+                    clone.rotation.y = player.rotY;
+                    scene.add(clone);
+                    otherPlayers[key] = clone;
+                };
 
-            loadBalancingClient.on(Photon.LoadBalancingClient.EVENT_JOIN_ROOM, () => {
-                myActorNumber = loadBalancingClient.actorNumber;
-                console.log(`✅ Вошли в комнату! Ваш номер: ${myActorNumber}`);
+                room.state.players.onRemove = (player, key) => {
+                    console.log('👋 Игрок отключился:', key);
+                    if (otherPlayers[key]) {
+                        scene.remove(otherPlayers[key]);
+                        delete otherPlayers[key];
+                    }
+                };
+
+                // Обновляем позиции других игроков
+                room.state.players.onChange = (player, key) => {
+                    if (key === mySessionId) return;
+                    if (otherPlayers[key]) {
+                        otherPlayers[key].position.set(player.x, player.y, player.z);
+                        otherPlayers[key].rotation.y = player.rotY;
+                    }
+                };
                 
                 document.getElementById('menu').style.display = 'none';
                 document.getElementById('ui').style.display = 'block';
                 isPlaying = true;
-            });
-
-            loadBalancingClient.on(Photon.LoadBalancingClient.EVENT_EVENT_DATA, (eventData) => {
-                if (eventData.code === 1) {
-                    const data = JSON.parse(eventData.data);
-                    if (data.type === 'move') {
-                        updateOtherPlayer(data);
-                    }
-                }
-            });
-
-            loadBalancingClient.on(Photon.LoadBalancingClient.EVENT_ERROR, (error) => {
-                console.error('❌ Ошибка Photon:', error);
-            });
-
-            loadBalancingClient.on(Photon.LoadBalancingClient.EVENT_DISCONNECT, () => {
-                console.log('⚠️ Отключено от Photon.');
-            });
+                
+            } catch (error) {
+                console.error('❌ Ошибка подключения к Colyseus:', error);
+            }
         }
 
         function sendMyState() {
-            if (loadBalancingClient && loadBalancingClient.isInRoom) {
-                const data = {
-                    type: 'move',
-                    actor: myActorNumber,
+            if (room) {
+                room.send('updatePlayer', {
                     x: playerGroup.position.x,
                     y: playerGroup.position.y,
                     z: playerGroup.position.z,
                     rotY: playerGroup.rotation.y,
                     anim: isDancingMode ? 'dance' : (isWalking ? 'walk' : 'idle')
-                };
-                try {
-                    loadBalancingClient.opRaiseEvent(1, JSON.stringify(data));
-                } catch (e) {
-                    console.error('Ошибка отправки события:', e);
-                }
-            }
-        }
-
-        function updateOtherPlayer(data) {
-            if (data.actor === myActorNumber) return;
-            
-            if (otherPlayers[data.actor]) {
-                const remote = otherPlayers[data.actor];
-                remote.position.set(data.x, data.y, data.z);
-                remote.rotation.y = data.rotY;
-            } else {
-                if (!mainModel) return;
-                const clone = mainModel.clone();
-                clone.scale.set(0.01, 0.01, 0.01);
-                clone.position.set(data.x, data.y + 0.2, data.z);
-                clone.rotation.y = data.rotY;
-                scene.add(clone);
-                otherPlayers[data.actor] = clone;
-                console.log('👥 Игрок подключился:', data.actor);
+                });
             }
         }
 
@@ -493,7 +374,7 @@
         // ЗАПУСК
         // =============================================================
         document.getElementById('startBtn').addEventListener('click', () => {
-            initPhoton();
+            initColyseus();
         });
         
         // --- Плавное переключение анимаций ---
@@ -558,7 +439,7 @@
                 camera.position.copy(playerGroup.position.clone().add(cameraOffset));
                 camera.lookAt(playerGroup.position.clone().add(new THREE.Vector3(0, 0.5, 0)));
                 
-                if (loadBalancingClient && loadBalancingClient.isInRoom) {
+                if (room) {
                     sendMyState();
                 }
                 
